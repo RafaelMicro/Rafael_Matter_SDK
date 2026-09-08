@@ -1,0 +1,17 @@
+files: |
+    (?x)^(
+        third_party/rafael/|
+        src/platform/RT58x|
+        examples/
+    )
+exclude: |
+    (?x)^(
+        third_party/rafael/repo
+    )
+
+repos:
+    - repo: https://github.com/pre-commit/mirrors-clang-format
+      rev: 0c9f6988b324eb7fc7dcf171bfce13faa9b13ad3 # v16.0.6
+      hooks:
+          - id: clang-format
+            files: \.(c|cc|cpp|ipp|cxx|c\+\+|C|cs|h|hh|hpp|hxx|h\+\+|H|js|m|mm)$

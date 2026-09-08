@@ -1,0 +1,39 @@
+name: Build example
+description: Build example
+inputs:
+  example_name:
+    description: "the name of the example project"
+    required: true
+  chip_name:
+    description: "the chip name (RT583/RT584H/RT584L/RT584HA4)"
+    required: true
+  upload_bin_path:
+    description: "the path of the upload bin folder"
+    required: true
+  upload_size_path:
+    description: "the path of the upload size folder"
+    required: true
+  opt_arg:
+    description: "optional arguments"
+    required: false
+    default: ""
+runs:
+  using: "composite"
+  steps:
+    - name: Build example
+      shell: bash
+      run: |
+        ./scripts/examples/gn_rt58x_example.sh \
+          "./examples/${{ inputs.example_name }}/rt58x" \
+          "./out/${{ inputs.example_name }}" \
+          "${{ inputs.chip_name }}" ${{ inputs.opt_arg }}
+
+    - name: Collect bin and size files
+      shell: bash
+      run: |
+        set -e
+        build_dir="./out/${{ inputs.example_name }}/${{ inputs.chip_name }}"
+        prefix="${{ inputs.chip_name }}-${{ inputs.example_name }}-example"
+        mkdir -p "${{ inputs.upload_bin_path }}" "${{ inputs.upload_size_path }}"
+        cp "$build_dir/$prefix.bin" "${{ inputs.upload_bin_path }}/$prefix.bin"
+        cp "$build_dir/size.txt" "${{ inputs.upload_size_path }}/$prefix-size.txt"

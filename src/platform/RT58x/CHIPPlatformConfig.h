@@ -1,0 +1,133 @@
+/*
+ *
+ *    Copyright (c) 2020-2022 Project CHIP Authors
+ *    Copyright (c) 2019 Google LLC.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
+
+/**
+ *    @file
+ *          Platform-specific configuration overrides for CHIP on
+ *          Rafael RT58x platforms.
+ */
+
+#pragma once
+
+#include "mcu.h"
+#include <stdint.h>
+// CHIP_CONFIG_ABORT() below expands to printf(). Matter 1.6 introduced
+// src/lib/support/Assertions.h, which expands the abort macro inside
+// chipAbort() while including only <cstdlib>, so stdio must come from here.
+#include <stdio.h>
+
+// ==================== General Platform Adaptations ====================
+
+#undef NL_ASSERT_ABORT
+#define NL_ASSERT_ABORT() CHIP_CONFIG_ABORT()
+#define CHIP_CONFIG_ABORT()                                                                                                        \
+    printf("CHIP ASSERT %s %s %d\r\n", __FILE__, __func__, __LINE__);                                                              \
+    __disable_irq();                                                                                                               \
+    for (;;)                                                                                                                       \
+        ;
+#define CHIP_CONFIG_PERSISTED_STORAGE_KEY_TYPE uint16_t
+#define CHIP_CONFIG_PERSISTED_STORAGE_ENC_MSG_CNTR_ID 1
+#define CHIP_CONFIG_PERSISTED_STORAGE_MAX_KEY_LENGTH 2
+
+#define CHIP_CONFIG_LIFETIIME_PERSISTED_COUNTER_KEY 0x01
+
+// ==================== Security Adaptations ====================
+#if CHIP_HAVE_CONFIG_H
+// #include <crypto/CryptoBuildConfig.h>
+#endif
+
+// ==================== General Configuration Overrides ====================
+
+#ifndef CHIP_CONFIG_MAX_UNSOLICITED_MESSAGE_HANDLERS
+#define CHIP_CONFIG_MAX_UNSOLICITED_MESSAGE_HANDLERS 8
+#endif // CHIP_CONFIG_MAX_UNSOLICITED_MESSAGE_HANDLERS
+
+#ifndef CHIP_CONFIG_MAX_EXCHANGE_CONTEXTS
+#define CHIP_CONFIG_MAX_EXCHANGE_CONTEXTS 16
+#endif // CHIP_CONFIG_MAX_EXCHANGE_CONTEXTS
+
+#ifndef CHIP_LOG_FILTERING
+#define CHIP_LOG_FILTERING 0
+#endif // CHIP_LOG_FILTERING
+
+/**
+ *  @def CHIP_CONFIG_MAX_FABRICS
+ *
+ *  @brief
+ *    Maximum number of fabrics the device can participate in.  Each fabric can
+ *    provision the device with its unique operational credentials and manage
+ *    its own access control lists.
+ */
+#ifndef CHIP_CONFIG_MAX_FABRICS
+#define CHIP_CONFIG_MAX_FABRICS 5 // 4 fabrics + 1 for rotation slack
+#endif
+
+// ==================== FreeRTOS Configuration Overrides ====================
+#ifndef CHIP_CONFIG_FREERTOS_USE_STATIC_TASK
+#define CHIP_CONFIG_FREERTOS_USE_STATIC_TASK 1
+#endif
+
+#ifndef CHIP_CONFIG_FREERTOS_USE_STATIC_QUEUE
+#define CHIP_CONFIG_FREERTOS_USE_STATIC_QUEUE 1
+#endif
+
+#ifndef CHIP_DEVICE_CONFIG_ICD_SLOW_POLL_INTERVAL
+#define CHIP_DEVICE_CONFIG_ICD_SLOW_POLL_INTERVAL chip::System::Clock::Milliseconds32(1000)
+#endif
+
+#ifndef CHIP_DEVICE_CONFIG_ICD_FAST_POLL_INTERVAL
+#if CHIP_CONFIG_ENABLE_ICD_LIT
+#define CHIP_DEVICE_CONFIG_ICD_FAST_POLL_INTERVAL chip::System::Clock::Milliseconds32(1000)
+#else
+#define CHIP_DEVICE_CONFIG_ICD_FAST_POLL_INTERVAL chip::System::Clock::Milliseconds32(100)
+#endif
+#endif
+
+#ifndef CHIP_CONFIG_ICD_IDLE_MODE_DURATION_SEC
+#if CHIP_CONFIG_ENABLE_ICD_LIT
+#define CHIP_CONFIG_ICD_IDLE_MODE_DURATION_SEC 3600
+#else
+#define CHIP_CONFIG_ICD_IDLE_MODE_DURATION_SEC 300
+#endif
+#endif
+
+// minimum 300ms
+#ifndef CHIP_CONFIG_ICD_ACTIVE_MODE_DURATION_MS
+#if CHIP_CONFIG_ENABLE_ICD_LIT
+#define CHIP_CONFIG_ICD_ACTIVE_MODE_DURATION_MS 25000
+#else
+#define CHIP_CONFIG_ICD_ACTIVE_MODE_DURATION_MS 300
+#endif
+#endif
+
+// minimum 300ms
+#ifndef CHIP_CONFIG_ICD_ACTIVE_MODE_THRESHOLD_MS
+#if CHIP_CONFIG_ENABLE_ICD_LIT
+#define CHIP_CONFIG_ICD_ACTIVE_MODE_THRESHOLD_MS 25000
+#else
+#define CHIP_CONFIG_ICD_ACTIVE_MODE_THRESHOLD_MS 300
+#endif
+#endif
+
+#ifndef CHIP_CONFIG_ICD_CLIENTS_SUPPORTED_PER_FABRIC
+#define CHIP_CONFIG_ICD_CLIENTS_SUPPORTED_PER_FABRIC 2
+#endif
+
+#define CHIP_DISPATCH_EVENT_LONG_DISPATCH_TIME_WARNING_THRESHOLD_MS 500
+
+#define CHIP_CONFIG_VERBOSE_VERIFY_OR_DIE 1

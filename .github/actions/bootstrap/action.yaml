@@ -1,0 +1,17 @@
+name: Bootstrap
+description: Bootstrap
+inputs:
+  cache-hit:
+    description: "Set to 'true' to skip bootstrap because the environment came from cache"
+    required: false
+    default: "false"
+runs:
+  using: "composite"
+  steps:
+    - name: Bootstrap
+      if: ${{ inputs.cache-hit != 'true' }}
+      shell: bash
+      env:
+        PW_NO_CIPD_CACHE_DIR: 1
+        PW_ENVSETUP_NO_BANNER: 1
+      run: bash scripts/bootstrap.sh

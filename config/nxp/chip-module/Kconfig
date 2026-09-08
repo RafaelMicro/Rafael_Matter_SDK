@@ -1,0 +1,40 @@
+#
+#   Copyright (c) 2024-2025 Project CHIP Authors
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+
+if SOC_FAMILY_NXP_RW
+
+rsource "../cmake/Kconfig.matter.nxp"
+
+config CHIP_APP_OPERATIONAL_KEYSTORE
+	bool "Use custom implementation of operational keystore"
+	default y if CHIP_SE05X
+	help
+		Use custom implementation of operational keystore.
+
+if CHIP_APP_OPERATIONAL_KEYSTORE
+	choice CHIP_APP_OPERATIONAL_KEYSTORE_SELECTION
+		prompt "Select Operation Keystore Implementation"
+		default CHIP_APP_OPERATIONAL_KEYSTORE_SE05X if CHIP_SE05X
+
+	config CHIP_APP_OPERATIONAL_KEYSTORE_SE05X
+	bool "Operation Keystore SE05X"
+	help
+		Enable application Operational keystore SE05X implementation.
+
+	endchoice # CHIP_APP_OPERATIONAL_KEYSTORE_SELECTION
+endif # CHIP_APP_OPERATIONAL_KEYSTORE
+
+endif # SOC_FAMILY_NXP_RW

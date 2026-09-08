@@ -1,0 +1,54 @@
+# Copyright (c) 2020 Project CHIP Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("//build_overrides/build.gni")
+import("//build_overrides/pigweed.gni")
+
+import("$dir_pw_build/python.gni")
+import("$dir_pw_build/python_dist.gni")
+import("$dir_pw_build/python_venv.gni")
+
+# This root BUILD.gn only exists to support "gn gen" at the repository root,
+# which scripts/setup/bootstrap.sh uses to build the shared Python
+# virtualenv (see scripts/setup/environment.json: virtualenv.gn_targets).
+# Rafael example applications are built from their own per-example gn root
+# (examples/<app>/rt58x), so the upstream project-chip/connectedhomeip host
+# build graph (default/certification/check groups, Linux/Android examples,
+# fuzz targets, etc.) is intentionally not reproduced here -- this fork does
+# not vendor the third_party directories that graph needs (lwip, inipp,
+# nlfaultinjection, perfetto, and the other chip-vendor SDKs).
+
+pw_python_venv("matter_build_venv") {
+  path = "$root_build_dir/python-venv"
+  constraints = pw_build_PIP_CONSTRAINTS
+  requirements = pw_build_PIP_REQUIREMENTS
+  source_packages = [ "//integrations/mobly:chip_mobly" ]
+}
+
+# Python packages installed during bootstrap.
+pw_python_group("python_packages") {
+  python_deps = [
+    ":pip_install_editable_matter_packages",
+    "$dir_pw_env_setup:pip_install_pigweed_package",
+  ]
+}
+
+# These pw_python_package targets will be installed using 'pip install --editable'
+pw_python_pip_install("pip_install_editable_matter_packages") {
+  packages = [
+    "//integrations/mobly:chip_mobly",
+    "//examples/chef",
+  ]
+  editable = true
+}

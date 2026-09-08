@@ -1,0 +1,737 @@
+# Copyright (c) 2020 Project CHIP Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("//build_overrides/build.gni")
+import("//build_overrides/pigweed.gni")
+import("//build_overrides/pigweed_environment.gni")
+import("${build_root}/chip/java/config.gni")
+import("${build_root}/config/compiler/compiler.gni")
+import("${build_root}/config/sysroot.gni")
+import("${build_root}/config/target.gni")
+
+if (current_os == "mac" || current_os == "ios") {
+  import("${build_root}/config/mac/mac_sdk.gni")
+}
+
+# To use different sanitizer options, use `gn args .` in the out folder and
+# use settings like:
+#
+#   is_clang=true
+#   is_debug=true
+#   optimize_for_size=false
+#   is_asan=true
+#   is_sanitize_fatal=false
+#
+
+declare_args() {
+  # Enable -Werror. This can be disabled if using a different compiler
+  # with unfixed or unsupported wanings.
+  treat_warnings_as_errors = true
+
+  # Enable Thread sanitizer
+  is_tsan = false
+
+  # Enable memory sanitizer
+  is_msan = false
+
+  # MSAN builds need an instrumented C++ runtime and dependencies.
+  # build_examples.py resolves this in host.py and passes it as a GN arg
+  # (default: ~/.cache/matter/msan_sysroot, overridable via SYSROOT_MSAN).
+  # Raw `gn gen` users must set SYSROOT_MSAN or pass --args='msan_sysroot="..."'.
+  msan_sysroot = getenv("SYSROOT_MSAN")
+
+  # enable undefined behavior sanitizer
+  is_ubsan = false
+
+  # Exit on sanitize error. Generally standard libraries may get errors
+  # so not stopping on the first error is often useful
+  is_sanitize_fatal = true
+
+  # Enable or disable Runtime Type Information (RTTI).
+  # Defaults true on darwin because Darwin.framework uses it.
+  enable_rtti = current_os == "mac" || current_os == "ios"
+
+  # Enable or disable support for C++ exceptions.
+  enable_exceptions = false
+
+  # Disable this to allow for overriding built-in defines, such as __FILE__.
+  warn_builtin_macro_redefined = true
+}
+
+if (current_cpu == "arm" || current_cpu == "arm64") {
+  import("${build_root}/config/arm.gni")
+} else if (current_cpu == "x86" || current_cpu == "x86_64") {
+  import("${build_root}/config/x86.gni")
+} else if (current_cpu == "riscv") {
+  import("${build_root}/config/riscv.gni")
+}
+
+config("release") {
+  defines = [ "NDEBUG" ]
+}
+
+config("debug_default") {
+  if (!is_debug) {
+    configs = [ ":release" ]
+  }
+}
+
+config("abi_default") {
+  cflags = []
+  if (current_os == "mac" || current_os == "ios") {
+    cflags += [
+      "-target",
+      mac_target_triple,
+    ]
+  }
+
+  if (current_os != "mac" && current_os != "ios") {
+    if (current_cpu == "arm" || current_cpu == "arm64") {
+      if (current_os == "linux" && is_clang) {
+        if (current_cpu == "arm") {
+          cflags += [ "--target=armv7-linux-gnueabihf" ]
+        } else if (current_cpu == "arm64") {
+          cflags += [ "--target=aarch64-linux-gnu" ]
+        }
+      }
+
+      if (arm_arch != "") {
+        cflags += [ "-march=${arm_arch}" ]
+      }
+      if (arm_cpu != "") {
+        cflags += [ "-mcpu=${arm_cpu}" ]
+      }
+      if (arm_tune != "") {
+        cflags += [ "-mtune=${arm_tune}" ]
+      }
+      if (arm_abi != "") {
+        cflags += [ "-mabi=${arm_abi}" ]
+      }
+      if (arm_fpu != "") {
+        cflags += [ "-mfpu=${arm_fpu}" ]
+      }
+      if (arm_float_abi != "") {
+        cflags += [ "-mfloat-abi=${arm_float_abi}" ]
+      }
+      if (arm_use_thumb) {
+        cflags += [ "-mthumb" ]
+      }
+    }
+    if (current_cpu == "x86" || current_cpu == "x86_64") {
+      if (x86_arch != "") {
+        cflags += [ "-march=${x86_arch}" ]
+      }
+      if (x86_cpu != "") {
+        cflags += [ "-mcpu=${x86_cpu}" ]
+      }
+      if (x86_tune != "") {
+        cflags += [ "-mtune=${x86_tune}" ]
+      }
+
+      if (current_cpu == "x86_64") {
+        cflags += [
+          "-msse4.2",
+          "-mpopcnt",
+          "-m64",
+        ]
+      } else if (current_cpu == "x86") {
+        cflags += [
+          "-mssse3",
+          "-mfpmath=sse",
+          "-m32",
+        ]
+      }
+    }
+    if (current_cpu == "riscv") {
+      if (riscv_arch != "") {
+        cflags += [ "-march=${riscv_arch}" ]
+      }
+      if (riscv_cpu != "") {
+        cflags += [ "-mcpu=${riscv_cpu}" ]
+      }
+      if (riscv_tune != "") {
+        cflags += [ "-mtune=${riscv_tune}" ]
+      }
+      if (riscv_abi != "") {
+        cflags += [ "-mabi=${riscv_abi}" ]
+      }
+      if (riscv_fpu != "") {
+        cflags += [ "-mfpu=${riscv_fpu}" ]
+      }
+      if (riscv_float_abi != "") {
+        cflags += [ "-mfloat-abi=${riscv_float_abi}" ]
+      }
+    }
+  }
+
+  asmflags = cflags
+  ldflags = cflags
+}
+
+config("dead_code_elimination_default") {
+  # Delete unreferenced sections. Helpful with -ffunction-sections.
+  if (current_os == "mac" || current_os == "ios") {
+    ldflags = [ "-Wl,-dead_strip" ]
+  } else {
+    ldflags = [ "-Wl,--gc-sections" ]
+  }
+}
+
+config("target_default") {
+  if (current_toolchain == default_toolchain) {
+    defines = target_defines
+    cflags = target_cflags
+    cflags_c = target_cflags_c
+    cflags_cc = target_cflags_cc
+    ldflags = target_ldflags
+  }
+}
+
+config("optimize_zero") {
+  cflags = [ "-O0" ]
+  ldflags = cflags
+}
+
+config("optimize_debug") {
+  cflags = [ "-O${optimize_debug_level}" ]
+  ldflags = cflags
+}
+
+config("optimize_default") {
+  if (is_debug) {
+    if (optimize_debug) {
+      configs = [ ":optimize_debug" ]
+    } else {
+      configs = [ ":optimize_zero" ]
+    }
+  } else {
+    if (optimize_for_size) {
+      configs = [ "$dir_pw_build:optimize_size" ]
+    } else {
+      configs = [ "$dir_pw_build:optimize_speed" ]
+    }
+
+    if (current_os != "mac") {
+      ldflags = [
+        "-Wl,-O2",
+        "-Wl,--gc-sections",
+      ]
+    }
+  }
+}
+
+config("disabled_warnings") {
+  cflags = [
+    "-Wno-deprecated-declarations",
+    "-Wno-missing-field-initializers",
+    "-Wno-unknown-warning-option",
+    "-Wno-unused-parameter",
+  ]
+  if (!is_debug) {
+    # assert() causes unused variable warnings in release.
+    cflags += [ "-Wno-unused" ]
+  }
+  if (!is_clang) {
+    cflags += [
+      "-Wno-cast-function-type",
+      "-Wno-psabi",
+      "-Wno-maybe-uninitialized",
+    ]
+  }
+  if (!warn_builtin_macro_redefined) {
+    cflags += [ "-Wno-builtin-macro-redefined" ]
+  }
+}
+
+config("warnings_common") {
+  cflags = [ "-Wall" ]
+
+  ldflags = []
+  if (treat_warnings_as_errors) {
+    cflags += [ "-Werror" ]
+    ldflags += [ "-Werror" ]
+  }
+
+  if (current_os != "mac" && current_os != "ios") {
+    ldflags += [ "-Wl,--fatal-warnings" ]
+  }
+
+  if (current_os != "mac" && current_os != "ios" && current_os != "linux" &&
+      current_os != "win" && current_os != "tizen" && current_os != "webos" &&
+      current_os != "cmsis-rtos") {
+    cflags += [ "-Wstack-usage=8192" ]
+  }
+}
+
+config("strict_warnings") {
+  cflags = [
+    "-Wextra",
+    "-Wshadow",
+    "-Wunreachable-code",
+    "-Wvla",
+    "-Wformat",
+    "-Wformat-nonliteral",
+    "-Wformat-security",
+  ]
+
+  if (current_os == "webos") {
+    cflags -= [
+      "-Wshadow",
+      "-Wvla",
+    ]
+  }
+
+  if (current_os == "mac" || current_os == "ios") {
+    cflags += [ "-Wconversion" ]
+  }
+
+  # For now we can't enable -Wundef across the board.  Enable it where
+  # we can.  Ideally this would be checking chip_device_platform or so
+  # to be more fine-grained than current_os, but it's not clear that
+  # we can access that here.
+  if (current_os != "freertos" &&
+      # cmsis-rtos is OpenIOT
+      current_os != "cmsis-rtos" &&
+      # cyw30739 is one of the Infineon builds
+      current_os != "cyw30739") {
+    cflags += [ "-Wundef" ]
+  }
+
+  if (matter_enable_java_compilation) {
+    cflags -= [ "-Wshadow" ]
+  }
+
+  cflags_cc = [ "-Wnon-virtual-dtor" ]
+
+  if (current_os == "nuttx") {
+    cflags -= [ "-Wshadow" ]
+    cflags_cc -= [ "-Wnon-virtual-dtor" ]
+  }
+
+  configs = []
+  ldflags = []
+
+  if (is_clang) {
+    cflags += [
+      "-Wimplicit-fallthrough",
+      "-Wheader-hygiene",
+      "-Wshorten-64-to-32",
+      "-Wformat-type-confusion",
+    ]
+
+    configs += [ "$dir_pw_build:clang_thread_safety_warnings" ]
+  }
+
+  if (!is_asan && (current_os == "linux" || current_os == "android")) {
+    ldflags += [ "-Wl,-z,defs" ]
+  }
+}
+
+config("warnings_default") {
+  configs = [
+    ":warnings_common",
+    ":strict_warnings",
+    ":disabled_warnings",
+  ]
+}
+
+config("disabled_warnings_third_party") {
+  cflags = [
+    "-Wno-unused",
+    "-Wno-format",
+    "-Wno-address",
+  ]
+
+  if (!is_clang) {
+    cflags += [ "-Wno-maybe-uninitialized" ]
+  }
+}
+
+config("warnings_third_party") {
+  configs = [
+    ":warnings_common",
+    ":disabled_warnings",
+    ":disabled_warnings_third_party",
+  ]
+}
+
+config("symbols_default") {
+  if (strip_symbols) {
+    cflags = [ "-s" ]
+  } else {
+    cflags = [ "-g${symbol_level}" ]
+  }
+}
+
+config("std_default") {
+  cflags_c = [ "-std=${c_standard}" ]
+  cflags_objc = [ "-std=${c_standard}" ]
+  cflags_cc = [ "-std=${cpp_standard}" ]
+  cflags_objcc = [ "-std=${cpp_standard}" ]
+}
+
+config("cosmetic_default") {
+  configs = [ "$dir_pw_build:colorize_output" ]
+}
+
+config("runtime_default") {
+  if (is_clang &&
+      current_os == "mac") {  # Using Pigweed clang instead of Darwin host clang
+    # Without pw_env_setup_CIPD_PIGWEED defined the hostclang:no_system_libcpp
+    # config silently uses the system libc++, usually resulting in linker errors.
+    assert(
+        defined(pw_env_setup_CIPD_PIGWEED),
+        "//build_overrides/pigweed_environment.gni must define pw_env_setup_CIPD_PIGWEED when using pigweed clang")
+
+    configs = [
+      "$dir_pw_toolchain/host_clang:no_system_libcpp",
+      "$dir_pw_toolchain/host_clang:xcode_sysroot",
+    ]
+  }
+  if (current_os == "linux" || current_os == "tizen" || current_os == "webos") {
+    libs = [
+      "atomic",
+      "dl",
+      "pthread",
+      "rt",
+    ]
+  }
+
+  cflags = []
+  ldflags = []
+
+  if (sysroot != "") {
+    cflags += [ "--sysroot=${sysroot}" ]
+    ldflags += [ "--sysroot=${sysroot}" ]
+
+    if (is_clang && current_os == "linux" &&
+        (current_cpu == "arm" || current_cpu == "arm64")) {
+      # The sysroot for linux-arm* targets contains an incompatible libunwind that
+      # conflicts with the one from the LLVM toolchain.
+      #
+      # To solve this, we provide the direct path to the correct libunwind.a
+      # from the pigweed toolchain. This forces the linker to use this exact
+      # file, completely bypassing any library search paths for libunwind.
+
+      if (current_cpu == "arm64") {
+        ldflags += [ rebase_path(
+                "$pw_env_setup_CIPD_PIGWEED/lib/aarch64-unknown-linux-gnu/libunwind.a",
+                root_build_dir) ]
+      } else {  # arm
+        ldflags += [ rebase_path(
+                "$pw_env_setup_CIPD_PIGWEED/lib/armv7-unknown-linux-gnueabihf/libunwind.a",
+                root_build_dir) ]
+      }
+    }
+  }
+
+  cflags += runtime_library_cflags
+  ldflags += runtime_library_ldflags
+}
+
+# To use different sanitizer options, use `gn args .` in the out folder and
+# use settings like:
+#
+#   is_clang=true
+#   is_debug=true
+#   optimize_for_size=false
+#   is_asan=true
+#   is_sanitize_fatal=false
+#
+
+config("sanitize_address") {
+  defines = []
+  cflags = [
+    "-fsanitize=address",
+    "-fno-omit-frame-pointer",
+  ]
+  if (is_clang) {
+    cflags += [
+      "-fsanitize-coverage=inline-8bit-counters,trace-cmp",
+      "-fno-sanitize-coverage=pc-table",
+    ]
+  }
+  ldflags = cflags
+
+  if ((target_os == "mac" || target_os == "ios") && !is_clang) {
+    defines += [ "_LIBCPP_HAS_NO_ASAN" ]
+  }
+}
+
+config("sanitize_thread") {
+  cflags = [ "-fsanitize=thread" ]
+  ldflags = cflags
+}
+
+# MSAN is implemented only by Clang; GCC has no -fsanitize=memory.
+assert(!is_msan || is_clang,
+       "is_msan=true requires is_clang=true. MSAN is only supported by Clang " +
+           "(GCC does not implement -fsanitize=memory).")
+
+# msan_sysroot is required by the sanitize_memory config below.
+assert(!is_msan || msan_sysroot != "",
+       "msan_sysroot must be set when is_msan=true. Run via " +
+           "scripts/build/build_examples.py --target ...-msan-clang, " +
+           "or set SYSROOT_MSAN before `gn gen`, or pass " +
+           "--args='msan_sysroot=\"<path>\"' explicitly.")
+
+config("sanitize_memory") {
+  cflags = [
+    "-fsanitize=memory",
+    "-fsanitize-memory-track-origins",
+    "-fno-omit-frame-pointer",
+    "-fsanitize-ignorelist=" +
+        rebase_path("msan_ignorelist.txt", root_build_dir),
+    "-nostdinc++",
+    "-isystem",
+    rebase_path("${msan_sysroot}/include/c++/v1", root_build_dir),
+
+    # TODO: Re-enable -O0 once other MSAN errors are resolved.
+    "-O1",  # Reduces stack frame sizes vs -O0, helps avoid MSan stack overflows
+  ]
+  ldflags = [
+    "-fsanitize=memory",
+    "-fsanitize-memory-track-origins",
+    "-fno-omit-frame-pointer",
+    "-nostdlib++",
+    "-L" + rebase_path("${msan_sysroot}/lib", root_build_dir),
+    "-lc++",
+    "-lc++abi",
+  ]
+  defines = [ "CHIP_MEMORY_SANITIZER_ENABLED=1" ]
+}
+
+config("sanitize_undefined_behavior") {
+  cflags = [
+    "-fvisibility=hidden",
+    "-fsanitize=undefined",
+    "-fsanitize=float-divide-by-zero",
+    "-fsanitize=integer-divide-by-zero",
+  ]
+  if (is_clang) {
+    cflags += [
+      "-fsanitize=unsigned-integer-overflow",
+      "-fsanitize=implicit-conversion",
+      "-fsanitize=nullability",
+    ]
+  }
+
+  #According to the LLVM UBSan documentation, sanitizing vptr is incompatible with the -fno-rtti flag.
+  if (!enable_rtti) {
+    cflags += [ "-fno-sanitize=vptr" ]
+  }
+
+  ldflags = cflags
+}
+
+config("sanitize_recover_all") {
+  cflags = [ "-fsanitize-recover=all" ]
+  ldflags = cflags
+}
+
+config("sanitize_default") {
+  configs = []
+
+  if (is_tsan) {
+    configs += [ ":sanitize_thread" ]
+  }
+
+  if (is_asan) {
+    configs += [ ":sanitize_address" ]
+  }
+
+  if (is_msan) {
+    configs += [ ":sanitize_memory" ]
+  }
+
+  if (is_ubsan) {
+    configs += [ ":sanitize_undefined_behavior" ]
+  }
+
+  if (!is_sanitize_fatal) {
+    configs += [ ":sanitize_recover_all" ]
+  }
+}
+
+config("libfuzzer_fuzzing") {
+  cflags = [ "-fsanitize=fuzzer" ]
+  ldflags = cflags
+}
+
+config("oss_fuzz") {
+  cflags = string_split(getenv("CFLAGS"))
+  cflags_cc = string_split(getenv("CXXFLAGS"))
+  ldflags = string_split(getenv("CXXFLAGS"))
+  ldflags += [ getenv("LIB_FUZZING_ENGINE") ]
+}
+
+config("fuzzing_default") {
+  configs = []
+  if (is_libfuzzer) {
+    configs += [ ":libfuzzer_fuzzing" ]
+  }
+  if (oss_fuzz) {
+    configs += [ ":oss_fuzz" ]
+  }
+}
+
+config("coverage") {
+  if (is_clang) {
+    cflags = [
+      # CLANG builds use the clang-specific coverage, so that versions of lcov/gcov
+      # do not have to match and `llvm-cov export -format=lcov` can be used
+      #
+      # Documentation: https://clang.llvm.org/docs/SourceBasedCodeCoverage.html
+      "-fprofile-instr-generate",
+      "-fcoverage-mapping",
+    ]
+  } else {
+    cflags = [ "--coverage" ]
+  }
+  ldflags = cflags
+
+  if (is_clang) {
+    # Looking to add buildid which _could_ be used for coverage
+    # file format using `%b` (see
+    # https://clang.llvm.org/docs/SourceBasedCodeCoverage.html#running-the-instrumented-program)
+    # however at the time of writing this, linux clang used during bootstrap
+    # does not seem to support this.
+    ldflags += [ "-Wl,--build-id" ]
+  }
+}
+
+config("coverage_default") {
+  configs = []
+  if (use_coverage) {
+    configs += [ ":coverage" ]
+  }
+}
+
+config("no_rtti") {
+  cflags_cc = [ "-fno-rtti" ]
+}
+
+config("rtti") {
+  cflags_cc = [ "-frtti" ]
+}
+
+config("rtti_default") {
+  if (enable_rtti) {
+    configs = [ ":rtti" ]
+  } else {
+    configs = [ ":no_rtti" ]
+  }
+}
+
+config("no_exceptions") {
+  cflags = [ "-fno-exceptions" ]
+}
+
+config("exceptions") {
+  cflags = [ "-fexceptions" ]
+}
+
+config("exceptions_default") {
+  if (enable_exceptions) {
+    configs = [ ":exceptions" ]
+  } else {
+    configs = [ ":no_exceptions" ]
+  }
+}
+
+config("unwind_tables") {
+  cflags = [ "-funwind-tables" ]
+}
+
+config("no_unwind_tables") {
+  cflags = [
+    "-fno-unwind-tables",
+    "-fno-asynchronous-unwind-tables",
+  ]
+}
+
+config("unwind_tables_default") {
+  if (exclude_unwind_tables) {
+    configs = [ ":no_unwind_tables" ]
+  } else {
+    configs = [ ":unwind_tables" ]
+  }
+}
+
+config("size_default") {
+  cflags = [
+    "-fno-common",
+    "-ffunction-sections",
+    "-fdata-sections",
+  ]
+
+  # do not export functions in jni, or --gc-sections will not work and will be some undefined issues
+  if (current_os == "android") {
+    cflags += [ "-fvisibility=hidden" ]
+  }
+}
+
+config("stack_protector_default") {
+  cflags = [ "-fno-stack-protector" ]
+}
+
+config("prefix_mappings_default") {
+  cflags = []
+  foreach(prefix_mapping, prefix_mappings) {
+    cflags += [ "-fdebug-prefix-map=${prefix_mapping}" ]
+  }
+}
+
+config("pic_default") {
+  if (enable_pic) {
+    cflags = [ "-fPIC" ]
+    ldflags = cflags
+  }
+}
+
+config("pie_default") {
+  if (enable_pie) {
+    ldflags = [ "-pie" ]
+  }
+}
+
+config("aliasing_default") {
+  cflags = [ "-fno-strict-aliasing" ]
+}
+
+config("specs_default") {
+  if (current_cpu == "arm" && current_os == "freertos" && !is_clang) {
+    cflags = [
+      "--specs=nosys.specs",
+      "--specs=nano.specs",
+    ]
+
+    libs = [ "nosys" ]
+
+    ldflags = cflags
+  }
+}
+
+config("link_as_needed") {
+  # ld64.lld on clang used by Apple does not have a --as-needed option
+  if (current_os != "mac" && current_os != "ios") {
+    ldflags = [ "-Wl,--as-needed" ]
+  }
+}
+
+config("arc_default") {
+  if (current_os == "mac" || current_os == "ios") {
+    cflags = [ "-fobjc-arc" ]
+  }
+}

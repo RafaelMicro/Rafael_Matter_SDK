@@ -1,0 +1,488 @@
+# Copyright (c) 2021-2025 Project CHIP Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import importlib.util
+import logging
+import os
+import shlex
+from enum import Enum, auto
+
+from runner.runner import Runner
+
+from .builder import BuilderOutput, OutDirLock, lock_output_dir
+from .gn import GnBuilder
+
+log = logging.getLogger(__name__)
+
+
+class NxpOsUsed(Enum):
+    FREERTOS = auto()
+    ZEPHYR = auto()
+
+    def OsEnv(self):
+        if self == NxpOsUsed.ZEPHYR:
+            return 'zephyr'
+        if self == NxpOsUsed.FREERTOS:
+            return 'freertos'
+        raise Exception('Unknown OS type: %r' % self)
+
+
+class NxpBuildSystem(Enum):
+    GN = auto()
+    CMAKE = auto()
+
+    def BuildSystem(self):
+        if self == NxpBuildSystem.GN:
+            return 'gn'
+        if self == NxpBuildSystem.CMAKE:
+            return 'cmake'
+        raise Exception('Unknown build system: %r' % self)
+
+
+class NxpBoard(Enum):
+    RT1060 = auto()
+    RT1170 = auto()
+    RW61X = auto()
+    MCXW72 = auto()
+
+    def Name(self, os_env):
+        if self == NxpBoard.RT1060:
+            return 'rt1060'
+        if self == NxpBoard.RT1170:
+            return 'rt1170'
+        if self == NxpBoard.RW61X:
+            if os_env == NxpOsUsed.ZEPHYR:
+                return 'frdm_rw612'
+            return 'rw61x'
+        if self == NxpBoard.MCXW72:
+            return 'mcxw72'
+        raise Exception('Unknown board type: %r' % self)
+
+    def FolderName(self, os_env):
+        if self == NxpBoard.RT1060:
+            return 'rt/rt1060'
+        if self == NxpBoard.RT1170:
+            return 'rt/rt1170'
+        if self == NxpBoard.RW61X:
+            if os_env == NxpOsUsed.ZEPHYR:
+                return 'zephyr'
+            return 'rt/rw61x'
+        if self == NxpBoard.MCXW72:
+            return 'mcxw72'
+        raise Exception('Unknown board type: %r' % self)
+
+
+class NxpBoardVariant(Enum):
+    FRDM = auto()
+    EVKC = auto()
+    EVKB = auto()
+
+
+class NxpApp(Enum):
+    LIGHTING = auto()
+    CONTACT = auto()
+    ALLCLUSTERS = auto()
+    LAUNDRYWASHER = auto()
+    THERMOSTAT = auto()
+    LOCK_APP = auto()
+    UNIT_TEST = auto()
+
+    def ExampleName(self):
+        if self == NxpApp.LIGHTING:
+            return 'lighting-app'
+        if self == NxpApp.CONTACT:
+            return "contact-sensor-app"
+        if self == NxpApp.ALLCLUSTERS:
+            return "all-clusters-app"
+        if self == NxpApp.LAUNDRYWASHER:
+            return "laundry-washer-app"
+        if self == NxpApp.THERMOSTAT:
+            return "thermostat"
+        if self == NxpApp.LOCK_APP:
+            return "lock-app"
+        if self == NxpApp.UNIT_TEST:
+            return "unit-test"
+        raise Exception('Unknown app type: %r' % self)
+
+    def NameSuffix(self):
+        if self == NxpApp.LIGHTING:
+            return 'light-example'
+        if self == NxpApp.CONTACT:
+            return 'contact-example'
+        if self == NxpApp.ALLCLUSTERS:
+            return "all-cluster-example"
+        if self == NxpApp.LAUNDRYWASHER:
+            return "laundry-washer-example"
+        if self == NxpApp.THERMOSTAT:
+            return "thermostat-example"
+        if self == NxpApp.LOCK_APP:
+            return "lock-example"
+        if self == NxpApp.UNIT_TEST:
+            return "unit-test-example"
+        raise Exception('Unknown app type: %r' % self)
+
+    def BuildRoot(self, root, board, os_env, build_system):
+        if os_env == NxpOsUsed.ZEPHYR:
+            if self.ExampleName() == "unit-test":
+                return os.path.join(root, 'src', 'test_driver', 'nxp', 'zephyr')
+            return os.path.join(root, 'examples', self.ExampleName(), 'nxp', board.FolderName(os_env))
+        if ((os_env == NxpOsUsed.FREERTOS) and (build_system == NxpBuildSystem.CMAKE)):
+            if (self.ExampleName() == "unit-test"):
+                return os.path.join(root, 'src', 'test_driver', 'nxp')
+            return os.path.join(root, 'examples', self.ExampleName(), 'nxp')
+        return os.path.join(root, 'examples', self.ExampleName(), 'nxp', board.FolderName(os_env))
+
+
+class NxpLogLevel(Enum):
+    DEFAULT = auto()  # default everything
+    ALL = auto()  # enable all logging
+    PROGRESS = auto()  # progress and above
+    ERROR = auto()  # error and above
+    NONE = auto()  # no chip_logging at all
+
+
+class NxpBuilder(GnBuilder):
+
+    def __init__(self,
+                 root: str,
+                 runner: Runner,
+                 output_dir_lock: OutDirLock,
+                 app: NxpApp = NxpApp.LIGHTING,
+                 board: NxpBoard = NxpBoard.MCXW72,
+                 board_variant: NxpBoardVariant = None,
+                 os_env: NxpOsUsed = NxpOsUsed.FREERTOS,
+                 build_system: NxpBuildSystem = NxpBuildSystem.CMAKE,
+                 low_power: bool = False,
+                 smu2: bool = False,
+                 enable_factory_data: bool = False,
+                 convert_dac_pk: bool = False,
+                 enable_lit: bool = False,
+                 enable_rotating_id: bool = False,
+                 has_sw_version_2: bool = False,
+                 disable_ble: bool = False,
+                 enable_thread: bool = False,
+                 enable_wifi: bool = False,
+                 enable_ethernet: bool = False,
+                 enable_shell: bool = False,
+                 enable_ota: bool = False,
+                 enable_factory_data_build: bool = False,
+                 enable_mtd: bool = False,
+                 disable_pairing_autostart: bool = False,
+                 iw416_transceiver: bool = False,
+                 w8801_transceiver: bool = False,
+                 iwx12_transceiver: bool = False,
+                 iw610_transceiver: bool = False,
+                 se05x_enable: bool = False,
+                 log_level: NxpLogLevel = NxpLogLevel.DEFAULT,
+                 ):
+        super().__init__(
+            root=app.BuildRoot(root, board, os_env, build_system),
+            runner=runner,
+            output_dir_lock=output_dir_lock)
+        self.code_root = root
+        self.app = app
+        self.board = board
+        self.os_env = os_env
+        if os_env is NxpOsUsed.ZEPHYR:
+            self.build_system = NxpBuildSystem.CMAKE
+        else:
+            self.build_system = build_system
+        self.low_power = low_power
+        self.smu2 = smu2
+        self.enable_factory_data = enable_factory_data
+        self.convert_dac_pk = convert_dac_pk
+        self.enable_lit = enable_lit
+        self.enable_rotating_id = enable_rotating_id
+        self.has_sw_version_2 = has_sw_version_2
+        self.disable_ble = disable_ble
+        self.enable_thread = enable_thread
+        self.enable_wifi = enable_wifi
+        self.enable_ethernet = enable_ethernet
+        self.enable_ota = enable_ota
+        self.enable_shell = enable_shell
+        self.enable_factory_data_build = enable_factory_data_build
+        self.enable_mtd = enable_mtd
+        self.disable_pairing_autostart = disable_pairing_autostart
+        self.board_variant = board_variant
+        self.iw416_transceiver = iw416_transceiver
+        self.w8801_transceiver = w8801_transceiver
+        self.iwx12_transceiver = iwx12_transceiver
+        self.iw610_transceiver = iw610_transceiver
+        self.se05x_enable = se05x_enable
+        if self.low_power and log_level != NxpLogLevel.NONE:
+            log.warning("Switching log level to 'NONE' for low power build")
+            log_level = NxpLogLevel.NONE
+        self.log_level = log_level
+
+    def BoardVariantName(self, board, os_env, board_variant):
+
+        match board:
+            case NxpBoard.RW61X:
+                if self.os_env is NxpOsUsed.FREERTOS:
+                    return "frdmrw612"
+                return "frdm_rw612"
+            case NxpBoard.RT1060:
+                if board_variant is NxpBoardVariant.EVKC:
+                    return "evkcmimxrt1060"
+                return "evkbmimxrt1060"
+            case NxpBoard.RT1170:
+                return "evkbmimxrt1170"
+            case NxpBoard.MCXW72:
+                if board_variant is NxpBoardVariant.FRDM:
+                    return "frdmmcxw72"
+                return "mcxw72evk"
+
+            case _:
+                raise Exception("Unknown NXP board")
+
+    def GnBuildArgs(self):
+        args = super().GnBuildArgs()
+
+        if self.low_power:
+            args.append('nxp_use_low_power=true')
+
+        if self.smu2:
+            args.append('nxp_use_smu2_static=true nxp_use_smu2_dynamic=true')
+
+        if self.enable_factory_data:
+            args.append('nxp_use_factory_data=true')
+
+        if self.convert_dac_pk:
+            args.append('nxp_convert_dac_private_key=true')
+
+        if self.enable_lit:
+            args.append('chip_enable_icd_lit=true')
+
+        if self.enable_rotating_id:
+            args.append('chip_enable_rotating_device_id=1 chip_enable_additional_data_advertising=1')
+
+        if self.log_level == NxpLogLevel.DEFAULT:
+            pass
+        elif self.log_level == NxpLogLevel.ALL:
+            args.append("chip_logging=true")
+            args.append("chip_error_logging=true")
+            args.append("chip_progress_logging=true")
+            args.append("chip_detail_logging=true")
+            args.append("chip_automation_logging=true")
+        elif self.log_level == NxpLogLevel.PROGRESS:
+            args.append("chip_logging=true")
+            args.append("chip_error_logging=true")
+            args.append("chip_progress_logging=true")
+            args.append("chip_detail_logging=false")
+            args.append("chip_automation_logging=false")
+        elif self.log_level == NxpLogLevel.ERROR:
+            args.append("chip_logging=true")
+            args.append("chip_error_logging=true")
+            args.append("chip_progress_logging=false")
+            args.append("chip_detail_logging=false")
+            args.append("chip_automation_logging=false")
+        elif self.log_level == NxpLogLevel.NONE:
+            args.append("chip_logging=false")
+        else:
+            raise Exception("Unknown log level: %r", self.log_level)
+
+        if self.has_sw_version_2:
+            args.append('nxp_software_version=2')
+
+        if self.enable_ota:
+            # OTA is enabled by default on kw32
+            if self.board == NxpBoard.RW61X:
+                args.append('chip_enable_ota_requestor=true no_mcuboot=false')
+
+        if self.enable_wifi:
+            args.append('chip_enable_wifi=true')
+
+        if self.disable_ble:
+            args.append('chip_enable_ble=false')
+
+        if self.enable_shell:
+            args.append('nxp_enable_matter_cli=true')
+
+        if self.enable_thread:
+            # thread is enabled by default on kw32
+            if self.board == NxpBoard.RW61X:
+                args.append('chip_enable_thread=true chip_inet_config_enable_ipv4=false')
+            if self.board == NxpBoard.RT1060:
+                args.append('chip_enable_thread=true chip_inet_config_enable_ipv4=false')
+            if self.board == NxpBoard.RT1170:
+                args.append('chip_enable_thread=true chip_inet_config_enable_ipv4=false')
+
+        if self.board_variant:
+            board_variant_value = self.BoardVariantName(self.board, self.os_env, self.board_variant)
+            if self.board == NxpBoard.RT1060:
+                flag_board_variant = "evkname=\\\"%s\\\"" % board_variant_value
+                args.append(flag_board_variant)
+            if self.board == NxpBoard.RW61X:
+                flag_board_variant = "board_version=\"frdm\""
+                args.append(flag_board_variant)
+
+        return args
+
+    def CmakeBuildFlags(self):
+        flags = []
+
+        if self.enable_factory_data and self.os_env == NxpOsUsed.ZEPHYR:
+            flags.append('-DFILE_SUFFIX=fdata')
+
+        if self.enable_ethernet and self.os_env == NxpOsUsed.ZEPHYR:
+            flags.append('-DEXTRA_CONF_FILE="prj_ethernet.conf"')
+
+        if self.enable_thread and self.os_env == NxpOsUsed.ZEPHYR:
+            flags.append('-DEXTRA_CONF_FILE="prj_thread_ftd.conf"')
+
+        if self.has_sw_version_2:
+            flags.append("-DCONFIG_CHIP_DEVICE_SOFTWARE_VERSION=2")
+            flags.append("-DCONFIG_CHIP_DEVICE_SOFTWARE_VERSION_STRING=\"2.0\"")
+
+        if self.enable_factory_data_build:
+            # Generate the factory data binary
+            flags.append("-DCONFIG_CHIP_FACTORY_DATA_BUILD=y")
+
+        if self.disable_pairing_autostart:
+            flags.append('-DCONFIG_CHIP_ENABLE_PAIRING_AUTOSTART=n')
+
+        if self.iw416_transceiver:
+            flags.append('-DCONFIG_MCUX_COMPONENT_component.wifi_bt_module.IW416=y')
+
+        if self.w8801_transceiver:
+            flags.append('-DCONFIG_MCUX_COMPONENT_component.wifi_bt_module.88W8801=y')
+
+        if self.iwx12_transceiver or self.iw610_transceiver:
+            flags.append('-DCONFIG_MCUX_COMPONENT_component.wifi_bt_module.IW61X=y')
+        if self.iw610_transceiver:
+            flags.append('-DCONFIG_MCUX_COMPONENT_component.wifi_bt_module.board_murata_2ll_m2=y')
+
+        if self.board == NxpBoard.RT1170:
+            flags.append('-Dcore_id=cm7')
+
+        if self.se05x_enable:
+            flags.append('-DCONFIG_CHIP_SE05X=y')
+
+        if self.board == NxpBoard.MCXW72:
+            flags.append('-DCONFIG_MCUX_COMPONENT_middleware.freertos-kernel.config=n')
+            flags.append('-Dcore_id=cm33_core0')
+
+        return " ".join(flags)
+
+    def get_conf_file(self):
+        thread_type = "mtd" if self.enable_mtd else "ftd"
+
+        components = [
+            "prj",
+            f"thread_{thread_type}" if self.enable_thread else None,
+            "wifi" if self.enable_wifi else None,
+            "eth" if self.enable_ethernet else None,
+            "br" if self.enable_wifi and self.enable_thread else None,
+            "ota" if self.enable_ota else None,
+            "fdata" if self.enable_factory_data else None,
+            "onnetwork" if self.disable_ble else None,
+            "low_power" if self.low_power else None
+        ]
+        prj_file = "_".join(filter(None, components)) + ".conf"
+        prj_file_abs_path = os.path.dirname(os.path.realpath(__file__)) + "/../../../examples/platform/nxp/config/" + prj_file
+        if os.path.isfile(prj_file_abs_path):
+            return prj_file
+        raise Exception("Configuration not supported, no conf file available: %s" % prj_file_abs_path)
+
+    @lock_output_dir
+    def generate(self):
+        if self.build_system is NxpBuildSystem.CMAKE:
+            build_flags = self.CmakeBuildFlags()
+        if self.os_env == NxpOsUsed.ZEPHYR:
+            if 'ZEPHYR_NXP_SDK_INSTALL_DIR' not in os.environ:
+                raise Exception("ZEPHYR_NXP_SDK_INSTALL_DIR need to be set")
+
+            if 'ZEPHYR_NXP_BASE' not in os.environ:
+                raise Exception("ZEPHYR_NXP_BASE need to be set")
+
+            cmd = 'export ZEPHYR_SDK_INSTALL_DIR="$ZEPHYR_NXP_SDK_INSTALL_DIR"'
+            cmd += '\nexport ZEPHYR_BASE="$ZEPHYR_NXP_BASE"'
+            # Force the Zephyr SDK toolchain instead of leaving the variant
+            # unset. On Zephyr 4.3 the vendored FindZephyr-sdk.cmake uses
+            # 'if("zephyr" STREQUAL ${ZEPHYR_TOOLCHAIN_VARIANT})', which parses
+            # to '("zephyr" STREQUAL )' and fails with "Unknown arguments
+            # specified" when the variable expands to empty (Zephyr 4.4
+            # switched to MATCHES and is not affected). Setting it explicitly
+            # selects the same auto-detected variant without tripping the
+            # if() parser.
+            cmd += '\nexport ZEPHYR_TOOLCHAIN_VARIANT=zephyr'
+        else:
+            if self.build_system is NxpBuildSystem.CMAKE and self.app.name != "UNIT_TEST":
+                build_flags += " " + "-DCONF_FILE_NAME=%s" % self.get_conf_file()
+            cmd = ''
+            # will be used with next sdk version to get sdk path
+            if 'NXP_UPDATE_SDK_SCRIPT_DOCKER' in os.environ:
+                # Dynamic import of a python file to get platforms sdk path
+                spec = importlib.util.spec_from_file_location("None", os.environ['NXP_UPDATE_SDK_SCRIPT_DOCKER'])
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+
+                for p in module.ALL_PLATFORM_SDK:
+                    if p.sdk_name == 'common':
+                        cmd += 'export NXP_SDK_ROOT="' + str(p.sdk_storage_location_abspath) + '" \n '
+                        cmd += 'export McuxSDK_DIR=$NXP_SDK_ROOT' + ' \n '
+                        cmd += 'source $NXP_SDK_ROOT/mcux-env.sh' + ' \n '
+
+            if self.build_system == NxpBuildSystem.CMAKE:
+                if 'PW_ENVIRONMENT_ROOT' in os.environ:
+                    cmd += 'export ARMGCC_DIR=$PW_ENVIRONMENT_ROOT/cipd/packages/arm' + ' \n '
+                else:
+                    cmd += 'export ARMGCC_DIR=%s/.environment/cipd/packages/arm' % os.path.abspath(self.code_root) + ' \n '
+
+        if ((self.os_env == NxpOsUsed.FREERTOS) and (self.build_system == NxpBuildSystem.GN)):
+            # add empty space at the end to avoid concatenation issue when there is no --args
+            cmd += 'gn gen --check --fail-on-unused-args --add-export-compile-commands=* --root=%s ' % self.root
+
+            if args := self.GnBuildArgs():
+                cmd += " --args=%s " % shlex.quote(" ".join(args))
+
+            cmd += self.output_dir
+
+            self._Execute(['bash', '-c', cmd], title=f"Generating {self.identifier}")
+        else:
+            cmd += '\nwest build -p --cmake-only -b {board_name} -d {out_folder} {example_folder} {build_flags}'.format(
+                board_name=self.BoardVariantName(self.board, self.os_env, self.board_variant),
+                out_folder=self.output_dir,
+                example_folder=self.app.BuildRoot(self.code_root, self.board, self.os_env, self.build_system),
+                build_flags=build_flags)
+            self._Execute(['bash', '-c', cmd], title='Generating ' + self.identifier)
+
+    @lock_output_dir
+    def build_outputs(self):
+        name = 'chip-%s-%s' % (self.board.Name(self.os_env), self.app.NameSuffix())
+        if self.os_env == NxpOsUsed.ZEPHYR:
+            yield BuilderOutput(
+                os.path.join(self.output_dir, 'zephyr', 'zephyr.elf'),
+                f'{name}.elf')
+            if self.options.enable_link_map_file:
+                yield BuilderOutput(
+                    os.path.join(self.output_dir, 'zephyr', 'zephyr.map'),
+                    f'{name}.map')
+        else:
+            if self.build_system == NxpBuildSystem.GN:
+                yield BuilderOutput(
+                    os.path.join(self.output_dir, name),
+                    f'{name}.elf')
+                if self.options.enable_link_map_file:
+                    yield BuilderOutput(
+                        os.path.join(self.output_dir, f'{name}.map'),
+                        f'{name}.map')
+            elif self.build_system == NxpBuildSystem.CMAKE:
+                yield BuilderOutput(
+                    os.path.join(self.output_dir, 'out/debug', name),
+                    f'{name}.elf')
+                if self.options.enable_link_map_file:
+                    yield BuilderOutput(
+                        os.path.join(self.output_dir, 'out/debug', f'{name}.map'),
+                        f'{name}.map')

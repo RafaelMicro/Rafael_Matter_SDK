@@ -1,0 +1,220 @@
+#
+#   Copyright (c) 2021 Project CHIP Authors
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+
+rsource "../common/cmake/Kconfig"
+
+# See config/common/cmake/Kconfig for full definition
+config CHIP
+	select CPP
+	imply REQUIRES_FULL_LIBCPP
+	imply REQUIRES_FULL_LIBC
+	imply NEWLIB_LIBC_NANO if NEWLIB_LIBC
+	imply CBPRINTF_LIBC_SUBSTS
+	imply REBOOT
+	imply ENTROPY_GENERATOR
+	imply HWINFO
+	imply FLASH
+	imply FLASH_MAP
+	imply NVS if !CHIP_NRF_PLATFORM
+	imply SETTINGS
+
+if CHIP
+
+# See config/common/cmake/Kconfig for full definition
+config CHIP_IPV4
+	imply NET_IPV4
+
+config CHIP_USE_ZEPHYR_NETWORKING
+	bool "Use Zephyr networking layer"
+	default y
+	imply POSIX_API if !ARCH_POSIX && !CHIP_NRF_PLATFORM && !CHIP_TELINK_PLATFORM
+	imply EVENTFD if !ARCH_POSIX
+	imply NET_UDP
+	imply NET_IPV6
+	imply NET_CONFIG_NEED_IPV6
+	imply NET_SOCKETS
+	imply NETWORKING
+
+config CHIP_APP_LOG_LEVEL
+	int "Logging level in application"
+	default LOG_DEFAULT_LEVEL
+	depends on LOG
+	help
+	  Sets the logging level in the Matter application. Use this configuration
+	  option only within the application. To set the logging level for the
+	  Matter stack, use the MATTER_LOG_LEVEL configuration option.
+
+# See config/common/cmake/Kconfig for full definition
+config CHIP_OTA_REQUESTOR_REBOOT_ON_APPLY
+	imply REBOOT
+
+# See config/common/cmake/Kconfig for full definition
+config CHIP_LIB_SHELL
+	imply SHELL
+	imply OPENTHREAD_SHELL if OPENTHREAD
+
+if OPENTHREAD
+
+# See config/common/cmake/Kconfig for full definition
+config CHIP_ENABLE_DNSSD_SRP
+	imply OPENTHREAD_ECDSA
+	imply OPENTHREAD_SRP_CLIENT
+
+# See config/common/cmake/Kconfig for full definition
+config CHIP_ENABLE_DNS_CLIENT
+	imply OPENTHREAD_DNS_CLIENT
+
+# See config/common/cmake/Kconfig for full definition
+config CHIP_ENABLE_ICD_SUPPORT
+	imply OPENTHREAD_MTD_SED
+
+endif # OPENTHREAD
+
+config CHIP_CRYPTO_PSA
+	imply MBEDTLS_PSA_CRYPTO_C
+	imply MBEDTLS_USE_PSA_CRYPTO
+	imply PSA_WANT_KEY_TYPE_AES
+	imply PSA_WANT_ALG_CCM
+	imply PSA_WANT_ALG_SHA_256
+	imply PSA_WANT_KEY_TYPE_ECC_KEY_PAIR
+	imply PSA_WANT_KEY_TYPE_ECC_PUBLIC_KEY
+	imply PSA_WANT_ECC_SECP_R1_256
+	imply PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_BASIC
+	imply PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_GENERATE
+	imply PSA_WANT_ALG_ECDH
+	imply PSA_WANT_ALG_HKDF
+	imply PSA_WANT_ALG_HMAC
+	imply PSA_WANT_ALG_ECDSA
+
+config CHIP_FACTORY_RESET_ERASE_SETTINGS
+	bool "Erase NVS flash pages on factory reset"
+	depends on SETTINGS_NVS || SETTINGS_ZMS
+	help
+	  Erases non-volatile pages occupied by non-volatile storage when a factory reset
+	  is requested, instead of removing Matter-related settings only. Enabling
+	  this option provides a more robust factory reset mechanism and allows to
+	  regain the original storage performance if any firmware issue has brought
+	  it to an unexpected state. For this reason, set this option if the entire
+	  configuration is supposed to be cleared on a factory reset, including
+	  device-specific entries.
+
+config CHIP_MALLOC_SYS_HEAP
+	bool "Memory allocator based on Zephyr sys_heap"
+	imply SYS_HEAP_RUNTIME_STATS
+	help
+	  Enables memory allocation functions that imitate the default malloc,
+	  calloc, realloc and free, based on sys_heap from Zephyr RTOS.
+
+if CHIP_MALLOC_SYS_HEAP
+
+config CHIP_MALLOC_SYS_HEAP_OVERRIDE
+	bool "Override default allocator with memory allocator based on Zephyr sys_heap"
+	default y
+	help
+	  Replaces the default memory allocation functions (such as malloc, calloc,
+	  realloc, free, and their reentrant versions) with their counterparts based
+	  on sys_heap from Zephyr RTOS.
+
+config CHIP_MALLOC_SYS_HEAP_SIZE
+	int "Heap size used by memory allocator based on Zephyr sys_heap"
+	default 12288 # 12kB
+	help
+	  Provides a value that controls how much of the device RAM is reserved for
+	  the heap used by the memory allocation functions based on sys_heap from
+	  Zephyr RTOS.
+
+config CHIP_MALLOC_SYS_HEAP_WATERMARKS_SUPPORT
+	bool "Support for heap watermarks based on Zephyr sys_heap"
+	help
+	  Enables support for getting current heap high watermark and resetting 
+	  watermarks. 
+
+endif # CHIP_MALLOC_SYS_HEAP
+
+config CHIP_SYSTEM_USE_ZEPHYR_SOCKET_EXTENSIONS
+	bool "Use Zephyr socket extensions in Matter System Layer"
+	default y
+	help
+	  Enables the use of Zephyr socket extensions in the Matter System Layer
+	  socket implementation.
+
+config CHIP_CERTIFICATION_DECLARATION_STORAGE
+	bool "Certification Declaration settings storage"
+	depends on CHIP_FACTORY_DATA
+	help
+	  Enables storing of the Certification Declaration in Zephyr settings
+	  instead of using the hardcoded value from firmware. This option also adds
+	  support for including new Certification Declaration into a firmware
+	  update image package that is sent as part of the OTA software update.
+
+if CHIP_CERTIFICATION_DECLARATION_STORAGE
+
+config CHIP_CERTIFiCATION_DECLARATION_OTA_IMAGE_ID
+	int "Certification declaration OTA image ID"
+	default 205 #0xcd
+	help
+	  Provides the image ID of the Certification Declaration image for sending
+	  it as part of the OTA software update.
+
+endif
+
+config CHIP_FACTORY_RESET_ERASE_NVS
+	bool "Erase NVS flash pages on factory reset"
+	depends on SETTINGS_NVS
+	help
+	  Erases flash pages occupied by non-volatile storage when a factory reset
+	  is requested, instead of removing Matter-related settings only. Enabling
+	  this option provides a more robust factory reset mechanism and allows to
+	  regain the original storage performance if any firmware issue has brought
+	  it to an unexpected state. For this reason, set this option if the entire
+	  configuration is supposed to be cleared on a factory reset, including
+	  device-specific entries.
+
+config CHIP_OPENTHREAD_NETWORK_SWITCH_PATH
+	bool "Keep Thread enabled when switching between commissioned datasets"
+	default n
+	help
+		Keep Thread enabled while switching between commissioned
+		datasets to reduce detached window during fail-safe rollback/connect.
+
+module = MATTER
+module-str = Matter
+source "${ZEPHYR_BASE}/subsys/logging/Kconfig.template.log_config"
+
+config APP_LINK_WITH_CHIP
+	bool "Link application with Matter libraries"
+	default y
+	help
+	  Adds Matter directories to the 'app' target include paths and links the
+	  'app' target with Matter libraries.
+
+if CHIP_OTA_IMAGE_BUILD
+
+config CHIP_OTA_IMAGE_FILE_NAME
+	string "OTA image file name"
+	default "matter.ota"
+	help
+	  Provides the file name of the generated Matter OTA image.
+
+config CHIP_OTA_IMAGE_EXTRA_ARGS
+	string "OTA image creator extra arguments"
+	help
+	  Provides optional arguments to the ota_image_tool.py script, used for
+	  building Matter OTA image.
+
+endif # CHIP_OTA_IMAGE_BUILD
+
+endif # CHIP

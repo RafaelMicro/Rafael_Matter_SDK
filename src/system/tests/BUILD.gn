@@ -1,0 +1,65 @@
+# Copyright (c) 2020 Project CHIP Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("//build_overrides/build.gni")
+import("//build_overrides/chip.gni")
+
+import("${chip_root}/build/chip/chip_test_suite.gni")
+import("${chip_root}/src/inet/inet.gni")
+import("../system.gni")
+
+chip_test_suite("tests") {
+  output_name = "libSystemLayerTests"
+
+  test_sources = [
+    "TestEventLoopHandler.cpp",
+    "TestSystemClock.cpp",
+    "TestSystemErrorStr.cpp",
+    "TestSystemScheduleLambda.cpp",
+    "TestSystemScheduleWork.cpp",
+    "TestSystemTimer.cpp",
+    "TestTimeSource.cpp",
+  ]
+
+  # ESP32 TCP uses PBUF_RAM packet buffers, which always allocate at the TCP
+  # maximum capacity. These tests assume requested sizes control buffer
+  # capacity, so leave them out of the TCP-enabled QEMU configuration.
+  if (!(chip_device_platform == "esp32" && chip_inet_config_enable_tcp_endpoint)) {
+    test_sources += [ "TestSystemPacketBuffer.cpp" ]
+  }
+
+  # SystemPacketBuffer on nrfconnect/esp32 uses LwIP buffers, which ignore the
+  #  requested allocation size and always allocate at max-size.  So our test,
+  #  which tries to size-limit the buffers, does not work correctly there.
+  if (chip_device_platform != "nrfconnect" && chip_device_platform != "esp32") {
+    test_sources += [ "TestTLVPacketBufferBackingStore.cpp" ]
+  }
+
+  if (chip_system_config_event_loop == "Select") {
+    test_sources += [
+      "TestSystemEventSource.cpp",
+      "TestSystemWakeEvent.cpp",
+    ]
+  }
+
+  cflags = [ "-Wconversion" ]
+
+  public_deps = [
+    "${chip_root}/src/inet",
+    "${chip_root}/src/lib/core:string-builder-adapters",
+    "${chip_root}/src/lib/support/tests:pw-test-macros",
+    "${chip_root}/src/platform",
+    "${chip_root}/src/system",
+  ]
+}

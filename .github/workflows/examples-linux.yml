@@ -1,0 +1,193 @@
+name: Build example - Linux
+
+on:
+  # Triggers the workflow on push or pull request events but only for the "master" branch
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  merge_group:
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+concurrency:
+    group: ${{ github.ref }}-${{ github.workflow }}-${{ (github.event_name == 'pull_request' && github.event.number) || (github.event_name == 'workflow_dispatch' && github.run_number) || github.sha }}
+    cancel-in-progress: true
+
+env:
+    CHIP_NO_LOG_TIMESTAMPS: true
+    UPLOAD_FOLDER: tmp
+    SIZE_FOLDER: size_reports
+    BIN_FOLDER: bin_files
+
+jobs:
+    build-rt58x:
+        name: ${{ matrix.example }} (${{ matrix.chip }})
+
+        runs-on: ubuntu-latest
+        if: github.actor != 'restyled-io[bot]'
+
+        env:
+            SUBMODULE_TOKEN: ${{ secrets.SUBMODULE_TOKEN }}
+
+        container:
+            # Keep in sync with integrations/docker/images/base/chip-build/version
+            image: ghcr.io/project-chip/chip-build:202
+
+        strategy:
+            # Build every example even if one fails, so a single broken app does
+            # not hide the state of the others.
+            fail-fast: false
+            matrix:
+                include:
+                    - { example: contact-sensor-app,          chip: RT583,     opt_arg: "--sed --certs=yes" }
+                    - { example: humidity-sensor-app,         chip: RT584H,    opt_arg: "--sed --certs=yes" }
+                    - { example: light-switch-app,            chip: RT584L,    opt_arg: "--sed --certs=yes" }
+                    - { example: lighting-app,                chip: RT584HA4,  opt_arg: "--certs=yes" }
+                    - { example: lighting-zigbee,             chip: RT584HA4,  opt_arg: "--certs=yes" }
+                    - { example: lock-app,                    chip: RT583,     opt_arg: "--sed --certs=yes" }
+                    - { example: occupancy-sensor-app,        chip: RT584H,    opt_arg: "--sed --certs=yes" }
+                    - { example: smart-plug-app,              chip: RT584L,    opt_arg: "--sed --certs=yes" }
+                    - { example: smoke-alarm-app,             chip: RT584HA4,  opt_arg: "--sed --certs=yes" }
+                    - { example: temperature-measurement-app, chip: RT583,     opt_arg: "--sed --certs=yes" }
+                    - { example: thermostat,                  chip: RT584H,    opt_arg: "--sed --certs=yes" }
+                    - { example: water-valve-app,             chip: RT584L,    opt_arg: "--sed --certs=yes" }
+                    - { example: window-app,                  chip: RT584HA4,  opt_arg: "--sed --certs=yes" }
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Set up access to private submodules
+              if: ${{ env.SUBMODULE_TOKEN != '' }}
+              shell: bash
+              run: |
+                git config --global url."https://x-access-token:${SUBMODULE_TOKEN}@github.com/".insteadOf "git@github.com:"
+
+            - name: Checkout submodules & Bootstrap
+              uses: ./.github/actions/checkout-submodules-and-bootstrap
+              with:
+                platform: linux
+                bootstrap-log-name: bootstrap-logs-${{ matrix.chip }}-${{ matrix.example }}
+
+            - name: Build ${{ matrix.example }} example
+              uses: ./.github/actions/build-example
+              with:
+                example_name: ${{ matrix.example }}
+                chip_name: ${{ matrix.chip }}
+                opt_arg: ${{ matrix.opt_arg }}
+                upload_bin_path: ${{ env.UPLOAD_FOLDER }}/${{ env.BIN_FOLDER }}
+                upload_size_path: ${{ env.UPLOAD_FOLDER }}/${{ env.SIZE_FOLDER }}
+
+            - name: Uploading Files
+              if: ${{ always() && !env.ACT }}
+              uses: actions/upload-artifact@v4
+              with:
+                # Merged into a single "bin_files_and_size_files" artifact by the
+                # merge-artifacts job below.
+                name: build-${{ matrix.chip }}-${{ matrix.example }}
+                if-no-files-found: ignore
+                path: ${{ env.UPLOAD_FOLDER }}/
+
+            - name: Clean out build output
+              if: always()
+              shell: bash
+              run: rm -rf ./out
+
+    merge-artifacts:
+        name: Merge artifacts
+        needs: build-rt58x
+        if: ${{ always() && !cancelled() }}
+        runs-on: ubuntu-latest
+        # Fails when every build failed and there is nothing to merge; that is
+        # already reported by build-result below.
+        continue-on-error: true
+
+        steps:
+            - name: Merge per-example artifacts
+              uses: actions/upload-artifact/merge@v4
+              with:
+                name: bin_files_and_size_files
+                pattern: build-*
+                delete-merged: true
+
+    size-report:
+        name: Size report
+        needs: merge-artifacts
+        # Only pull requests have a meaningful baseline to compare against;
+        # pushes to master exist to produce that baseline.
+        if: ${{ always() && !cancelled() && github.event_name == 'pull_request' }}
+        runs-on: ubuntu-latest
+
+        permissions:
+            contents: read
+            # Needed to list workflow runs and download their artifacts.
+            actions: read
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Download size reports for this build
+              uses: actions/download-artifact@v4
+              continue-on-error: true
+              with:
+                name: bin_files_and_size_files
+                path: current
+
+            - name: Find the last successful build on ${{ github.event.pull_request.base.ref }}
+              id: baseline
+              shell: bash
+              env:
+                GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                BASE_REF: ${{ github.event.pull_request.base.ref }}
+              run: |
+                set -euo pipefail
+                run_id=$(gh api \
+                    "repos/${GITHUB_REPOSITORY}/actions/workflows/examples-linux.yml/runs?branch=${BASE_REF}&event=push&status=success&per_page=1" \
+                    --jq '.workflow_runs[0].id // empty')
+                echo "run-id=${run_id}" >> "$GITHUB_OUTPUT"
+                if [ -n "$run_id" ]; then
+                    echo "Comparing against run ${run_id} on ${BASE_REF}"
+                else
+                    echo "No successful ${BASE_REF} run found; reporting absolute sizes only"
+                fi
+
+            - name: Download baseline size reports
+              if: ${{ steps.baseline.outputs.run-id != '' }}
+              uses: actions/download-artifact@v4
+              # The baseline artifact may have expired; fall back to absolute sizes.
+              continue-on-error: true
+              with:
+                name: bin_files_and_size_files
+                path: base
+                run-id: ${{ steps.baseline.outputs.run-id }}
+                github-token: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Compare sizes
+              shell: bash
+              run: |
+                # Informational only: this step never fails the build. Add
+                # --warn-on-growth-percent <n> to additionally call out examples
+                # that grew by more than n%.
+                python3 .github/scripts/compare_sizes.py \
+                    --current current \
+                    --base base
+
+    build-result:
+        name: Build result
+        needs: build-rt58x
+        if: always()
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Check all example builds succeeded
+              env:
+                RESULT: ${{ needs.build-rt58x.result }}
+              run: |
+                echo "build-rt58x: $RESULT"
+                if [ "$RESULT" != "success" ]; then
+                  echo "One or more example builds failed"
+                  exit 1
+                fi

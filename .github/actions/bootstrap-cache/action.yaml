@@ -1,0 +1,20 @@
+name: Bootstrap cache
+description: Restore/save the bootstrapped pigweed environment
+outputs:
+  cache-hit:
+    description: "Whether the bootstrapped environment was restored from cache"
+    value: ${{ steps.cache.outputs.cache-hit }}
+runs:
+  using: "composite"
+  steps:
+    # NOTE: the bootstrapped pigweed environment contains absolute paths, so the
+    #       cache is only valid for the same runner OS/arch and workspace layout.
+    - name: Bootstrap cache
+      id: cache
+      uses: actions/cache@v4
+      continue-on-error: true
+      with:
+        key: ${{ runner.os }}-${{ runner.arch }}-env-${{ hashFiles('scripts/setup/*', 'third_party/pigweed/**') }}
+        path: |
+          .environment
+          build_overrides/pigweed_environment.gni

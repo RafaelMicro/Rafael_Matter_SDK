@@ -1,0 +1,67 @@
+# Copyright (c) 2020 Project CHIP Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("//build_overrides/chip.gni")
+import("//build_overrides/pigweed.gni")
+import("//build_overrides/rt58x_sdk.gni")
+
+import("${chip_root}/examples/platform/rt58x/args.gni")
+
+arm_platform_config = "${rt58x_sdk_build_root}/rt58x_arm.gni"
+
+mbedtls_target = "${chip_root}/third_party/rafael:mbedtls"
+openthread_external_mbedtls = mbedtls_target
+
+# Matter 1.6 added an assert to src/crypto/crypto.gni forbidding it from being
+# imported from args.gni, so the old `if (chip_crypto == "")` guard is gone.
+# A plain assignment here is still overridable from the gn command line, which
+# takes precedence over args.gni. Every 1.6 platform args.gni does it this way.
+chip_crypto = "mbedtls"
+
+chip_device_platform = "rt58x"
+
+#Net work configuration OpenThread
+lwip_platform = "rt58x"
+chip_mdns = "platform"
+chip_inet_config_enable_ipv4 = false
+chip_inet_config_enable_tcp_endpoint = false
+chip_inet_config_enable_udp_endpoint = true
+chip_system_config_use_openthread_inet_endpoints = true
+chip_with_lwip = false
+optimize_debug_level = "s"
+
+chip_build_tests = false
+
+# Matter 1.6 gates clusters with external dependencies behind
+# chip_enable_all_clusters (default true via matter_enable_recommended).
+# push-av-stream-transport needs third_party/uriparser, which this fork does
+# not ship and an RT58x device has no use for. config/ameba/args.gni disables
+# it the same way.
+chip_enable_push_av_stream_transport = false
+
+chip_enable_thread = true
+openthread_root = "${chip_root}/third_party/openthread/openthread-rafael/openthread"
+
+openthread_core_config_platform_check_file = ""
+
+openthread_project_core_config_file = "OpenThreadConfig.h"
+
+openthread_core_config_deps = [ "${chip_root}/examples/platform/rt58x:openthread_core_config_rt58x_chip_examples" ]
+
+chip_config_memory_management = "platform"
+
+pw_build_LINK_DEPS = [
+  "$dir_pw_assert:impl",
+  "$dir_pw_log:impl",
+]

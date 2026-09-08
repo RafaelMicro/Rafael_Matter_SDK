@@ -1,0 +1,8 @@
+{{> header excludeZapComment=true}}
+
+#import <Foundation/Foundation.h>
+
+#import "MTRBaseClusters.h"
+#import "MTRBaseDevice.h"
+
+{{> placeholder_comment}}

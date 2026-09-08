@@ -1,0 +1,41 @@
+name: Checkout submodules
+description: Checkout submodules
+inputs:
+  extra-parameters:
+    description: "extra parameters"
+    required: false
+    default: ""
+  platform:
+    description: "Platform name"
+    required: true
+  attempt-limit:
+    description: "How many times to try before giving up"
+    required: false
+    default: "3"
+  attempt-delay:
+    description: "Seconds to wait between attempts"
+    required: false
+    default: "2"
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout submodules
+      shell: bash
+      env:
+        ATTEMPT_LIMIT: ${{ inputs.attempt-limit }}
+        ATTEMPT_DELAY: ${{ inputs.attempt-delay }}
+      run: |
+        for attempt in $(seq 1 "$ATTEMPT_LIMIT"); do
+          if scripts/checkout_submodules.py \
+              --allow-changing-global-git-config \
+              --shallow \
+              --platform ${{ inputs.platform }} ${{ inputs.extra-parameters }}; then
+            exit 0
+          fi
+          if [ "$attempt" -lt "$ATTEMPT_LIMIT" ]; then
+            echo "::warning::Submodule checkout attempt ${attempt} failed, retrying in ${ATTEMPT_DELAY}s"
+            sleep "$ATTEMPT_DELAY"
+          fi
+        done
+        echo "::error::Submodule checkout failed after ${ATTEMPT_LIMIT} attempts"
+        exit 1

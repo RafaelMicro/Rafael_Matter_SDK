@@ -1,0 +1,51 @@
+[submodule "nlassert"]
+	path = third_party/nlassert/repo
+	url = https://github.com/nestlabs/nlassert.git
+	branch = master
+	shallow = true
+[submodule "nlio"]
+	path = third_party/nlio/repo
+	url = https://github.com/nestlabs/nlio.git
+	branch = master
+	shallow = true
+[submodule "qrcode"]
+	path = examples/common/QRCode/repo
+	url = https://github.com/nayuki/QR-Code-generator.git
+	branch = master
+	shallow = true
+[submodule "pigweed"]
+	path = third_party/pigweed/repo
+	url = https://github.com/google/pigweed.git
+	branch = main
+	shallow = true
+[submodule "nanopb"]
+	path = third_party/nanopb/repo
+	url = https://github.com/nanopb/nanopb.git
+	branch = master
+	shallow = true
+[submodule "third_party/jsoncpp/repo"]
+	path = third_party/jsoncpp/repo
+	url = https://github.com/open-source-parsers/jsoncpp.git
+	shallow = true
+[submodule "third_party/openthread/openthread-rafael"]
+	path = third_party/openthread/openthread-rafael
+	url = https://github.com/RafaelMicro/openthread
+[submodule "third_party/boringssl/repo/src"]
+	path = third_party/boringssl/repo/src
+	url = https://github.com/google/boringssl.git
+	branch = master
+	excluded-platforms = esp32
+	shallow = true
+[submodule "third_party/editline/repo"]
+	path = third_party/editline/repo
+	url = https://github.com/troglobit/editline.git
+	shallow = true
+[submodule "third_party/mbedtls/repo"]
+	path = third_party/mbedtls/repo
+	url = https://github.com/ARMmbed/mbedtls.git
+	branch = mbedtls-2.28
+	excluded-platforms = esp32
+	shallow = true
+[submodule "third_party/rafael/repo/components"]
+	path = third_party/rafael/repo/components
+	url = https://github.com/RafaelMicro/components.git

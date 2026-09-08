@@ -1,0 +1,583 @@
+# Copyright (c) 2020 Project CHIP Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("//build_overrides/chip.gni")
+import("//build_overrides/jlink.gni")
+import("//build_overrides/mbedtls.gni")
+import("//build_overrides/rt58x_sdk.gni")
+
+import("${chip_root}/src/lib/lib.gni")
+import("${chip_root}/src/platform/device.gni")
+
+declare_args() {
+  # Location of the rt58x SDK.
+  rt58x_sdk_root = "${chip_root}/third_party/rafael/repo"  
+  _freertos_root = "${chip_root}/third_party/rafael/repo/third_party/freertos/"
+  use_static_sdk_lib =  false
+  # Build openthread with prebuilt rafael lib
+  use_rafael_thread_lib = false
+  enable_openthread_cli = false
+  # Rafael Platform
+  raf_enable_multi_control = false
+  raf_enable_zigbee = false
+  raf_enable_ssed = false
+  rafael_board = "RT58x"
+  kvs_max_entries = 75
+}
+
+assert(rt58x_sdk_root != "", "rt58x_sdk_root must be specified")
+
+# Defines an rt58x SDK build target.
+#
+# Parameters:
+#   rt58x_sdk_root - The location of the erf32 SDK.
+#   sources - The sources files to build.
+template("rt58x_sdk") {
+  if (defined(invoker.rt58x_sdk_root)) {
+    rt58x_sdk_root = invoker.rt58x_sdk_root
+  }
+
+  assert(rt58x_sdk_root != "", "rt58x_sdk_root must be specified")
+
+  sdk_target_name = target_name
+
+  config("${sdk_target_name}_config") {
+    include_dirs = []
+    libs = []
+    if (defined(invoker.include_dirs)) {
+      include_dirs += invoker.include_dirs
+    }
+
+    # Treat these includes as system includes, so warnings in them are not fatal.
+    _include_dirs = [
+      "${chip_root}/third_party/mbedtls/repo/include/mbedtls",
+      "${chip_root}/third_party/mbedtls/repo/include/psa",
+      "${chip_root}/third_party/mbedtls/repo/include",
+      "${chip_root}/third_party/mbedtls/repo/library",
+      "${chip_root}/third_party/rafael",
+    ]
+    if(raf_enable_zigbee && rafael_board != "RT584HA4")
+    {
+      assert(false, "Zigbee is only supported on RT584HA4")
+    }
+    # Chip-based include directory
+    if (rafael_board == "RT583") {
+      _include_dirs += [
+      # FreeRTOS Include
+      "${rt58x_sdk_root}/thirdparty/freertos/Include",
+      "${rt58x_sdk_root}/thirdparty/freertos/portable/GCC/ARM_CM3/",
+      # HOSAL include
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Inc",
+      # SOC Include
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_system/Include/",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_crypto/Inc/",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_driver/Inc/",
+      "${rt58x_sdk_root}/components/platform/common/CMSIS/Core/Include/",
+      "${rt58x_sdk_root}/components/platform/common/CMSIS/Core/Include/m-profile/",
+      # RF Include
+      "${rt58x_sdk_root}/components/network/rt569-rf/rt582/include/",
+      "${rt58x_sdk_root}/components/network/rt569-fw/rt582/include/",
+      ]
+    }
+    else {
+      _include_dirs += [
+      # FreeRTOS Include
+      "${rt58x_sdk_root}/thirdparty/freertos/Include",
+      "${rt58x_sdk_root}/thirdparty/freertos/portable/GCC/ARM_CM33_NTZ/non_secure/",
+      # HOSAL include
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Inc",
+      # SOC Include
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_system/Include/",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_crypto/Inc/",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_driver/Inc/",
+      "${rt58x_sdk_root}/components/platform/common/CMSIS/Core/Include/",
+      "${rt58x_sdk_root}/components/platform/common/CMSIS/Core/Include/m-profile/",
+      # RF Include
+      "${rt58x_sdk_root}/components/network/rt569-rf/rt584/include/",
+      "${rt58x_sdk_root}/components/network/rt569-fw/rt584/include/",
+      ]
+    }
+
+    _include_dirs += [
+      "${chip_root}/examples/platform/rt58x",
+      # FreeRTOS Port Include
+      "${rt58x_sdk_root}/components/common/fota/Include",
+      "${rt58x_sdk_root}/components/common/rtos_port/Inc",
+      # Utility Include
+      "${rt58x_sdk_root}/components/utility/EnhancedFlashDataset/Inc/",
+      "${rt58x_sdk_root}/components/utility/sw_timer/include",
+      "${rt58x_sdk_root}/components/utility/syslog/include",
+      "${rt58x_sdk_root}/components/utility/uart_stdio/Inc",
+      "${rt58x_sdk_root}/components/utility/utility/Inc",
+      "${rt58x_sdk_root}/components/utility/log",
+      "${rt58x_sdk_root}/components/utility/cli/Inc",
+      "${rt58x_sdk_root}/components/utility/dump_boot_info/Inc",
+      # RF Include
+      "${rt58x_sdk_root}/components/network/lmac15p4/Inc/",
+      "${rt58x_sdk_root}/components/network/ruci/include/",
+      # BLE Include
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-cmd-api/include/",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-service/common/include/",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-service/dis/include/",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-service/fota/include/",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-service/gaps/include/",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-service/gatts/include/",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-service/trsps/include/",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-service/matter/include/",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/hci/include/",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/lib-host/include/",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/uecc/",
+      "${chip_root}/third_party/rafael/BLE_App_Profile/Include/",
+      "${chip_root}/third_party/rafael/BLE_FOTA/include/",
+      # ZB Include
+      "${rt58x_sdk_root}/components/network/zigbee/zboss/include",
+      "${rt58x_sdk_root}/components/network/zigbee/zboss_port/include",
+    ]
+
+    # Note that we're setting the mbedTLS and PSA configuration files through a
+    # define. This means the build system by default does not pick up changes in
+    # the content of these, only when changing the filename itself.
+    # To fix this, these files are also manually depended upon in the source set
+    # declared in rt58x_mbedtls_config further down this file.
+    defines = [ "USE_FREERTOS" ]
+    defines += ["BLE_SUPPORT_NUM_CONN_MAX = 1",
+                "CONFIG_BUILD_COMPONENT_CLI",]
+    # Get Git Hash
+    git_hash = exec_script("${chip_root}/third_party/rafael/get_git_hash.py",
+                           [],
+                           "trim string")
+
+    # Get FW versions (BUILD_MAC_FW_INFO / BUILD_BLE_FW_INFO / BUILD_MULTI_FW_INFO)
+    _fw_info = exec_script("${chip_root}/third_party/rafael/get_fw_version.py",
+                           [ rafael_board ],
+                           "list lines")
+
+    defines +=  [ "RAFAEL_SDK_VER=\"1.5.1.0\"",
+                  "BUILD_HASH_INFO=0x${git_hash}",
+                  "CONFIG_BUILD_PROJECT=\"matter-app\""]
+    defines += _fw_info
+    if (raf_enable_ssed) {
+      defines += [ "RAF_ENABLE_SSED=1" ]
+    }
+    if (defined(invoker.enable_sleepy_device)) {
+      if (invoker.enable_sleepy_device) {
+        defines += [ "CONFIG_HOSAL_SOC_IDLE_SLEEP=1",
+                     "CONFIG_HOSAL_SOC_SLEEP_TIMER_ID=3" ]
+        if(raf_enable_zigbee) {
+          defines += [ "ZB_ED_ROLE",
+                        "ZB_USE_SLEEP" ]
+        }
+      }
+    }
+    if (rafael_board == "RT583") {
+      defines += [ "CONFIG_CHIP=\"RT583\"",
+                   "CHIP_NAME=\"RT583\"",
+                   "CONFIG_RT583",
+                   "EFD_START_ADDR=0x1E0000",
+                   "ENV_AREA_SIZE=0x10000",
+                   "EFD_GC_EMPTY_SEC_THRESHOLD=8",
+                   "CONFIG_RF_POWER_10DBM",
+                   "CONFIG_RF_MCU_CONST_LOAD_SUPPORTED=1",
+                ]
+    }
+    else if (rafael_board == "RT584H") {
+      defines += [ "CONFIG_CHIP=\"RT584H\"",
+                   "CHIP_NAME=\"RT584H\"",
+                   "CONFIG_RT584H",
+                   "EFD_START_ADDR=0x101E0000",
+                   "ENV_AREA_SIZE=0x10000",
+                   "EFD_GC_EMPTY_SEC_THRESHOLD=8",
+                   "CONFIG_RF_POWER_20DBM",
+                ]
+    }
+    else if (rafael_board == "RT584L") {
+      defines += [ "CONFIG_CHIP=\"RT584L\"",
+                   "CHIP_NAME=\"RT584L\"",
+                   "CONFIG_RT584L",
+                   "EFD_START_ADDR=0x101E0000",
+                   "ENV_AREA_SIZE=0x10000",
+                   "EFD_GC_EMPTY_SEC_THRESHOLD=8",
+                   "CONFIG_RF_POWER_10DBM",
+                ]
+    }
+    else if (rafael_board == "RT584HA4") {
+      defines += [ "CONFIG_CHIP=\"RT584HA4\"",
+                   "CHIP_NAME=\"RT584HA4\"",
+                   "CONFIG_RT584HA4",
+                   "EFD_START_ADDR=0x103E0000",
+                   "ENV_AREA_SIZE=0x10000",
+                   "EFD_GC_EMPTY_SEC_THRESHOLD=8",
+                   "CONFIG_RF_POWER_20DBM",
+                ]
+    }
+    defines += [ "CONFIG_BOARD=\"evb\"",
+                  "CONFIG_LOG_MAX_LEVEL=2", # LOG_LEVEL_WARN=3, see log.h
+                  "CONFIG_RCO32K_ENABLE",
+                  "CONFIG_FREERTOS=1",
+                  "SET_SYS_CLK=2",
+                  "CONFIG_BUILD_COMPONENT_OPENTHREAD=1",
+                  "CONFIG_RF_FW_INCLUDE_MULTI_2P4G=1",
+                  "CONFIG_RF_FW_INCLUDE_PCI=0",
+                  "CONFIG_RF_FW_INCLUDE_BLE=0",
+                  "__STARTUP_CLEAR_BSS",
+                  "CONFIG_HOSAL_SOC_DISABLE_MP_SECTOR_INIT=0",
+                  "CONFIG_CRYPTO_AES_ENABLE=1",
+                  "CONFIG_CRYPTO_SM3_ENABLE=1",
+                  "CONFIG_CRYPTO_SM4_ENABLE=1",
+                  "CONFIG_CRYPTO_C25519_ENABLE=1",
+                  "CONFIG_CRYPTO_SECP256R1_ENABLE=1",
+                  "CONFIG_CRYPTO_SECP192R1_ENABLE=1",
+                  "CONFIG_CRYPTO_SECT163R2_ENABLE=1",
+                  "CONFIG_CRYPTO_SM2P256V1_ENABLE=1",
+                  "CONFIG_CRYPTO_SM2_P192_ENABLE=1",
+                  "CONFIG_BUILD_COMPONENT_ZIGBEE",
+                  # "TX_PWR_COMP_DEBUG=0",
+                  # "TX_PWR_PLL_DEBUG=0",
+                  ]
+    if (rafael_board == "RT584H" || rafael_board == "RT584L" || rafael_board == "RT584HA4") {
+      defines += [ 
+                  "CONFIG_AUX_COMP_SECURE_EN",
+                  "CONFIG_BOD_COMP_SECURE_EN",
+                  "CONFIG_COMM_SUBSYSTEM_AHB_SECURE_EN",
+                  "CONFIG_DMA0_SECURE_EN",
+                  "CONFIG_DMA1_SECURE_EN",
+                  "CONFIG_DPD_SECURE_EN",
+                  "CONFIG_FLASHCTRL_SECURE_EN",
+                  "CONFIG_GPIO_SECURE_EN",
+                  "CONFIG_I2C_MASTER0_SECURE_EN",
+                  "CONFIG_I2C_MASTER1_SECURE_EN",
+                  "CONFIG_I2C_SLAVE_SECURE_EN",
+                  "CONFIG_I2S0_SECURE_EN",
+                  "CONFIG_IRM_SECURE_EN",
+                  "CONFIG_PWM_SECURE_EN",
+                  "CONFIG_QSPI0_SECURE_EN",
+                  "CONFIG_QSPI1_SECURE_EN",
+                  "CONFIG_RCO1M_CAL_SECURE_EN",
+                  "CONFIG_RCO32K_CAL_SECURE_EN",
+                  "CONFIG_RTC_SECURE_EN",
+                  "CONFIG_SADC_SECURE_EN",
+                  "CONFIG_SLOWTIMER0_SECURE_EN",
+                  "CONFIG_SLOWTIMER1_SECURE_EN",
+                  "CONFIG_SOC_PMU_SECURE_EN",
+                  "CONFIG_SWI0_SECURE_EN",
+                  "CONFIG_SWI1_SECURE_EN",
+                  "CONFIG_SYSCTRL_SECURE_EN",
+                  "CONFIG_TIMER0_SECURE_EN",
+                  "CONFIG_TIMER1_SECURE_EN",
+                  "CONFIG_TIMER2_SECURE_EN",
+                  "CONFIG_UART0_SECURE_EN",
+                  "CONFIG_UART1_SECURE_EN",
+                  "CONFIG_UART2_SECURE_EN",
+                  "CONFIG_WDT_SECURE_EN",
+                  "CONFIG_XDMA_SECURE_EN",
+                   ]
+    }
+
+    if (chip_build_libshell) {  # matter shell
+      defines += [
+        "ENABLE_CHIP_SHELL",
+      ]
+    }
+    cflags = []
+    foreach(include_dir, _include_dirs) {
+      cflags += [ "-isystem" + rebase_path(include_dir, root_build_dir) ]
+    }
+
+    cflags += [
+      "-Wno-sign-compare",
+      "-Wno-unused-function",
+      "-Wno-unused-parameter",
+      "-Wno-unused-variable",
+      "-Wno-unused-but-set-variable",
+      "-Wno-format",
+      "-Wno-format-nonliteral",
+      "-Wno-format-security",
+      "-Wno-stringop-overread",
+      "-Wno-address-of-packed-member",
+      "-Wno-array-bounds",
+      "-Wno-vla",
+      "-Wno-missing-braces",
+      "-Wno-comment",
+      "-Wno-unused-result",
+      #"-w",
+    ]
+    if (rafael_board == "RT584H" || rafael_board == "RT584L" || rafael_board == "RT584HA4") {
+      cflags += [
+        "-mcmse",
+      ]
+    }
+    if (defined(invoker.defines)) {
+      defines += invoker.defines
+    }
+  }
+
+  source_set(sdk_target_name) {
+    sources = []
+    if (defined(invoker.sources)) {
+      sources += invoker.sources
+    }
+    # Chip-based source
+    if (rafael_board == "RT583") {
+      sources += [
+      # FreeRTOS source
+      "${rt58x_sdk_root}/thirdparty/freertos/croutine.c",
+      "${rt58x_sdk_root}/thirdparty/freertos/event_groups.c",
+      "${rt58x_sdk_root}/thirdparty/freertos/list.c",
+      "${rt58x_sdk_root}/thirdparty/freertos/portable/GCC/ARM_CM3/port.c",
+      "${rt58x_sdk_root}/thirdparty/freertos/queue.c",
+      "${rt58x_sdk_root}/thirdparty/freertos/stream_buffer.c",
+      "${rt58x_sdk_root}/thirdparty/freertos/tasks.c",
+      "${rt58x_sdk_root}/thirdparty/freertos/timers.c",
+      # System Source
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_system/Startup/startup.S",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_system/Src/system_mcu.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_system/Src/mp_sector.c",
+      # HOSAL Source
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_crypto_aes_ccm.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_crypto_aes.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_crypto_ctr_drbg.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_crypto_ecc.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_crypto_ecjpake.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_crypto_hmac_drbg.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_crypto_sha256.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_dma.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_flash.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_gpio.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_lpm.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_pwm.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_rf.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_rtc.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_slow_timer.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_sysctrl.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_timer.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_trng.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_uart.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt582_hosal/Src/hosal_wdt.c",
+      # Driver Source
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_driver/Src/comparator.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_driver/Src/dma.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_driver/Src/flashctl.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_driver/Src/gpio.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_driver/Src/lpm.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_driver/Src/pwm.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_driver/Src/rtc.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_driver/Src/sadc.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_driver/Src/sysctrl.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_driver/Src/sysfun.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_driver/Src/timer.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_driver/Src/trng.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_driver/Src/wdt.c",
+      # RF Source
+      "${rt58x_sdk_root}/components/network/rt569-fw/rt582/Src/rt569mp_fw.c",
+      "${rt58x_sdk_root}/components/network/rt569-fw/rt582/Src/rt569mp_init.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_driver/Src/comm_subsystem_drv.c",
+      "${rt58x_sdk_root}/components/network/rt569-rf/rt582/Src/rf_common_init.c",
+      "${rt58x_sdk_root}/components/network/rt569-rf/rt582/Src/rf_mcu_ahb.c",
+      "${rt58x_sdk_root}/components/network/rt569-rf/rt582/Src/rf_mcu_spi.c",
+      "${rt58x_sdk_root}/components/network/rt569-rf/rt582/Src/rf_mcu.c",
+      "${rt58x_sdk_root}/components/network/rt569-rf/rt582/Src/rf_tx_comp.c",
+      #Crypto Engine
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_crypto/rt_aes.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_crypto/rt_crypto_util.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_crypto/rt_crypto.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_crypto/rt_ecjpake.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_crypto/rt_hmac_drbg.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt582/rt582_crypto/rt_sha256.c",
+      ]
+    }
+    else{
+      sources += [
+      # FreeRTOS source
+      "${rt58x_sdk_root}/thirdparty/freertos/croutine.c",
+      "${rt58x_sdk_root}/thirdparty/freertos/event_groups.c",
+      "${rt58x_sdk_root}/thirdparty/freertos/list.c",
+      "${rt58x_sdk_root}/thirdparty/freertos/portable/GCC/ARM_CM33_NTZ/non_secure/port.c",
+      "${rt58x_sdk_root}/thirdparty/freertos/portable/GCC/ARM_CM33_NTZ/non_secure/portasm.c",
+      "${rt58x_sdk_root}/thirdparty/freertos/queue.c",
+      "${rt58x_sdk_root}/thirdparty/freertos/stream_buffer.c",
+      "${rt58x_sdk_root}/thirdparty/freertos/tasks.c",
+      "${rt58x_sdk_root}/thirdparty/freertos/timers.c",
+      # System Source
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_system/Startup/startup.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_system/Src/system_mcu.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_system/Src/mp_sector.c",
+      # HOSAL Source
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_crypto_aes_ccm.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_crypto_aes.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_crypto_ctr_drbg.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_crypto_ecc.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_crypto_ecjpake.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_crypto_hmac_drbg.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_crypto_sha256.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_crypto_sm3.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_crypto_sm4.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_dma.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_flash.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_gpio.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_lpm.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_otp.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_pwm.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_rf.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_rtc.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_slow_timer.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_sysctrl.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_timer.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_trng.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_uart.c",
+      "${rt58x_sdk_root}/components/platform/hosal/rt584_hosal/Src/hosal_wdt.c",
+      # Driver Source
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_driver/Src/dma.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_driver/Src/flashctl.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_driver/Src/gpio.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_driver/Src/lpm.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_driver/Src/otp.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_driver/Src/pwm.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_driver/Src/rtc.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_driver/Src/sadc.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_driver/Src/sysctrl.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_driver/Src/sysfun.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_driver/Src/timer.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_driver/Src/trng.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_driver/Src/wdt.c",
+      # RF Source
+      "${rt58x_sdk_root}/components/network/rt569-fw/rt584/Src/rt569s_fw.c",
+      "${rt58x_sdk_root}/components/network/rt569-fw/rt584/Src/rt569s_init.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_driver/Src/comm_subsystem_drv.c",
+      "${rt58x_sdk_root}/components/network/rt569-rf/rt584/Src/rf_common_init.c",
+      "${rt58x_sdk_root}/components/network/rt569-rf/rt584/Src/rf_mcu_ahb.c",
+      "${rt58x_sdk_root}/components/network/rt569-rf/rt584/Src/rf_mcu_spi.c",
+      "${rt58x_sdk_root}/components/network/rt569-rf/rt584/Src/rf_mcu.c",
+      "${rt58x_sdk_root}/components/network/rt569-rf/rt584/Src/rf_tx_comp.c",
+      #Crypto Engine
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_crypto/rt_aes.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_crypto/rt_crypto_util.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_crypto/rt_crypto.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_crypto/rt_ctr_drbg.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_crypto/rt_ecjpake.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_crypto/rt_hmac_drbg.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_crypto/rt_sha256.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_crypto/rt_sm3.c",
+      "${rt58x_sdk_root}/components/platform/soc/rt584/rt584_crypto/rt_sm4.c",
+      ]
+    }
+    sources += [
+      # FreeRTOS Port Source
+      "${rt58x_sdk_root}/components/common/rtos_port/Src/app_hooks.c",
+      # Utility Source
+      "${rt58x_sdk_root}/components/utility/cli/cli.c",
+      "${rt58x_sdk_root}/components/utility/cli/shell.c",
+      "${rt58x_sdk_root}/components/utility/EnhancedFlashDataset/Src/efd_iap.c",
+      "${rt58x_sdk_root}/components/utility/EnhancedFlashDataset/Src/efd_kv.c",
+      "${rt58x_sdk_root}/components/utility/EnhancedFlashDataset/Src/efd_log.c",
+      "${rt58x_sdk_root}/components/utility/EnhancedFlashDataset/Src/efd_port.c",
+      "${rt58x_sdk_root}/components/utility/EnhancedFlashDataset/Src/efd_utils.c",
+      "${rt58x_sdk_root}/components/utility/EnhancedFlashDataset/Src/EnhancedFlashDataset.c",
+      "${rt58x_sdk_root}/components/utility/log/log.c",
+      "${rt58x_sdk_root}/components/utility/syslog/src/syslog.c",
+      "${rt58x_sdk_root}/components/utility/uart_stdio/debug.c",
+      "${rt58x_sdk_root}/components/utility/uart_stdio/sscanf.c",
+      "${rt58x_sdk_root}/components/utility/uart_stdio/uart_stdio.c",
+      "${rt58x_sdk_root}/components/utility/uart_stdio/vsscanf.c",
+      "${rt58x_sdk_root}/components/utility/utility/fsm.c",
+      "${rt58x_sdk_root}/components/utility/utility/util_fcs.c",
+      "${rt58x_sdk_root}/components/utility/utility/util_list.c",
+      "${rt58x_sdk_root}/components/utility/utility/util_queue.c",
+      "${rt58x_sdk_root}/components/utility/utility/util_string.c",
+      "${rt58x_sdk_root}/components/utility/dump_boot_info/Src/dump_boot_info.c",
+      # BLE source
+      "${chip_root}/third_party/rafael/BLE_App_Profile/ble_profile_app.c",
+      "${chip_root}/third_party/rafael/BLE_App_Profile/ble_profile_def.c",
+      "${chip_root}/third_party/rafael/BLE_FOTA/src/ble_fota.c",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-service/common/src/ble_service_common.c",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-service/dis/src/ble_service_dis.c",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-service/fota/src/ble_service_fotas.c",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-service/gaps/src/ble_service_gaps.c",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-service/gatts/src/ble_service_gatts.c",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-service/trsps/src/ble_service_trsps.c",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-service/matter/src/ble_service_matter.c",
+      # BLE Source
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-cmd-api/src/ble_cmd_advertising.c",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-cmd-api/src/ble_cmd_att_gatt.c",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-cmd-api/src/ble_cmd_common.c",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-cmd-api/src/ble_cmd_connect_cte.c",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-cmd-api/src/ble_cmd_gap.c",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-cmd-api/src/ble_cmd_privacy.c",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-cmd-api/src/ble_cmd_scan.c",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-cmd-api/src/ble_cmd_security_manager.c",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-cmd-api/src/ble_host_ref.c",
+      "${rt58x_sdk_root}/components/network/bluetooth/ble-host/ble-cmd-api/src/ble_cmd_extended_advertising.c",
+    ]
+    if(raf_enable_zigbee)
+    {
+      sources += [
+        # ZB Source
+        "${rt58x_sdk_root}/components/network/zigbee/zboss_port/src/zb_crypto.c",
+        "${rt58x_sdk_root}/components/network/zigbee/zboss_port/src/zb_freertos.c",
+        "${rt58x_sdk_root}/components/network/zigbee/zboss_port/src/zb_nvram.c",
+        "${rt58x_sdk_root}/components/network/zigbee/zboss_port/src/zb_powersaving.c",
+        "${rt58x_sdk_root}/components/network/zigbee/zboss_port/src/zb_radio.c",
+        "${rt58x_sdk_root}/components/network/zigbee/zboss_port/src/zb_serial.c",
+        "${rt58x_sdk_root}/components/network/zigbee/zboss_port/src/zb_timer.c",
+      ]
+    }
+    # public_configs = [ ":${sdk_target_name}_config" ]
+    public_deps = [ ":RT_SDK" ]
+  }
+
+  source_set("RT_SDK") {
+    sources = []
+    if (defined(invoker.sources)) {
+      sources += invoker.sources
+    }
+    public_configs = [ ":${sdk_target_name}_config" ]
+    libs = [ "${rt58x_sdk_root}/components/network/lmac15p4/liblmac15p4.a" ]
+    if(raf_enable_zigbee)
+    {
+      if(invoker.enable_sleepy_device)
+      {
+        libs += [ "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_aps_rfd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_commissioning_rfd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_common_rfd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_mac_rfd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_nwk_rfd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_secure_rfd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_zcl_rfd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_zdo_rfd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_zgp_rfd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_zse_rfd.a"]
+      }
+      else
+      {
+        libs += [ "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_aps_ffd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_commissioning_ffd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_common_ffd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_mac_ffd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_nwk_ffd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_secure_ffd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_zcl_ffd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_zdo_ffd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_zgp_ffd.a",
+                  "${rt58x_sdk_root}/components/network/zigbee/zboss/libzboss_zse_ffd.a"]
+      }
+    }
+    if (rafael_board == "RT583")
+    {
+      libs += [ "${rt58x_sdk_root}/components/network/bluetooth/ble-host/libCM3_ble_host.a" ]
+    }
+    else
+    {
+      libs += [ "${rt58x_sdk_root}/components/network/bluetooth/ble-host/libCM33_ble_host.a" ]
+    }
+  }
+}

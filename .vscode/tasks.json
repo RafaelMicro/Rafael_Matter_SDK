@@ -1,0 +1,97 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Matter: Bootstrap Environment",
+            "type": "shell",
+            "command": "source scripts/bootstrap.sh",
+            "group": "build"
+        },
+        {
+            "label": "Matter: Activate Environment",
+            "type": "shell",
+            "command": "source scripts/activate.sh",
+            "group": "build"
+        },
+        {
+            "label": "Matter: Build Example",
+            "type": "shell",
+            "command": "./scripts/examples/gn_rt58x_example.sh ./examples/${input:exampleproject}/rt58x ./out/${input:exampleproject} ${input:board} --${input:devicetype} --certs=${input:Certificate}",
+            "group": "build"
+        },
+        {
+            "label": "Matter: Clean Build Output",
+            "type": "shell",
+            "command": "sudo rm -fr out/${input:exampleproject}/${input:board}",
+            "group": "build"
+        },
+        {
+            "label": "Matter: Generate ZAP Files",
+            "type": "shell",
+            "command": "export ZAP_INSTALL_PATH=$PWD/.environment/cipd/packages/zap && ZAP_FILE=$(find examples/${input:exampleproject} -maxdepth 2 -name '*.zap' | head -1) && ./scripts/tools/zap/generate.py \"$ZAP_FILE\" -o \"$(dirname \"$ZAP_FILE\")/\"",
+            "group": "build"
+        },
+        {
+            "label": "Matter: Generate OTA Image",
+            "type": "shell",
+            "command": "./third_party/rafael/rafael_ota_tool.py create -v 0x1346 -p 0x400E -vn ${input:versionNum} -vs \"${input:versionStr}\" -da sha256 out/${input:exampleproject}/${input:board}/${input:board}-${input:exampleproject}-example.bin out/${input:exampleproject}/${input:board}/${input:board}-${input:exampleproject}-example.ota",
+            "group": "build"
+        },
+    ],
+    "inputs": [
+        {
+            "type": "pickString",
+            "id": "exampleproject",
+            "description": "Which example do you want to create?",
+            "options": [
+                "contact-sensor-app",
+                "humidity-sensor-app",
+                "light-switch-app",
+                "lighting-app",
+                "lighting-zigbee",
+                "lock-app",
+                "occupancy-sensor-app",
+                "smart-plug-app",
+                "smoke-alarm-app",
+                "temperature-measurement-app",
+                "thermostat",
+                "water-valve-app",
+                "window-app"
+            ],
+            "default": ""
+        },
+        {
+            "type": "pickString",
+            "id": "board",
+            "description": "Rafael board type",
+            "options": ["RT583", "RT584H", "RT584L", "RT584HA4"],
+            "default": "RT583"
+        },
+        {
+            "type": "pickString",
+            "id": "devicetype",
+            "description": "Device type? (router=non-sleep, sed=sleepy end device, ssed=synchronized sed)",
+            "options": ["router", "sed", "ssed"],
+            "default": "router"
+        },
+        {
+            "type": "pickString",
+            "id": "Certificate",
+            "description": "Use attestation credentials?",
+            "options": ["yes", "dac-only", "no"],
+            "default": "no"
+        },
+        {
+            "type": "promptString",
+            "id": "versionNum",
+            "description": "Version number (e.g. 2)",
+            "default": "2"
+        },
+        {
+            "type": "promptString",
+            "id": "versionStr",
+            "description": "Version string (e.g. 2.0)",
+            "default": "2.0"
+        }
+    ]
+}

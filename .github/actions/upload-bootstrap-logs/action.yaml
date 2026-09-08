@@ -1,0 +1,21 @@
+name: Upload bootstrap logs
+description: Upload the pigweed bootstrap logs as an artifact for debugging
+inputs:
+  bootstrap-log-name:
+    description: "Artifact name for the bootstrap logs (must be unique per job)"
+    required: false
+    default: bootstrap-logs-${{ github.job }}
+runs:
+  using: "composite"
+  steps:
+    - name: Upload bootstrap logs
+      uses: actions/upload-artifact@v4
+      if: ${{ always() && !env.ACT }}
+      continue-on-error: true
+      with:
+        name: ${{ inputs.bootstrap-log-name }}
+        overwrite: true
+        if-no-files-found: ignore
+        path: |
+          .environment/gn_out/.ninja_log
+          .environment/pigweed-venv/*.log

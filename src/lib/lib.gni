@@ -1,0 +1,49 @@
+# Copyright (c) 2021 Project CHIP Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("//build_overrides/chip.gni")
+import("${chip_root}/config/recommended.gni")
+import("${chip_root}/src/lib/core/core.gni")
+
+declare_args() {
+  # Build controller library.
+  chip_build_controller = chip_target_style != "embedded"
+
+  # Enable libshell support.
+  chip_build_libshell = false
+
+  # Enable building the DefaultDeviceAttestationVerifier. When making
+  # a Commissioner or Administrator that employs different or more complex
+  # logic, this should be set to false.
+  chip_build_default_attestation_verifier = true
+
+  # Set to true to enable device-specific attestation credentials
+  chip_build_platform_attestation_credentials_provider = false
+
+  # Set to true to code-generate CodgenProcessingConfig.h
+  #
+  # This is to allow cmake-based systems to have a CodegenProcessingConfig available
+  # since the build config headers are processed as part of gn processing.
+  chip_build_enable_codegen_configuration = true
+
+  # Default value for libchip_enable_*_cluster arguments that control whether clusters
+  # with external dependencies get built. The default (via matter_enable_recommended)
+  # is true. Setting this to false allows individual required clusters to be enabled via opt-in.
+  chip_enable_all_clusters = matter_enable_recommended
+}
+
+declare_args() {
+  # Enable the push-av-stream-transport cluster server (depends on uriparser)
+  chip_enable_push_av_stream_transport = chip_enable_all_clusters
+}
