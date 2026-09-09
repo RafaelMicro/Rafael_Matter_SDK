@@ -79,6 +79,8 @@ namespace {
 #define MAC_PIB_MAC_MAX_CSMACA_BACKOFFS 5
 #define MAC_PIB_MAC_MIN_BE 2
 
+#define CHIP_ADV_PARAM_SET_MAX_ATTEMPTS 5
+
 /* FreeRTOS sw timer */
 TimerHandle_t sbleAdvTimeoutTimer;
 TimerHandle_t sbleConnTimeoutTimer;
@@ -1041,13 +1043,30 @@ CHIP_ERROR BLEManagerImpl::ConfigureAdvertisingData(void)
     adv_param.adv_channel_map   = ADV_CHANNEL_ALL;
     adv_param.adv_filter_policy = ADV_FILTER_POLICY_ACCEPT_ALL;
 
-    vTaskDelay(5);
-    ble_cmd_adv_disable();
-    vTaskDelay(5);
-    status = ble_cmd_adv_param_set(&adv_param);
+    status = BLE_ERR_INVALID_STATE;
+    for (uint8_t attempt = 0; attempt < CHIP_ADV_PARAM_SET_MAX_ATTEMPTS; attempt++)
+    {
+        if (!ble_adv_idle_state_check())
+        {
+            // Request the stop (ignored if one is already pending) and wait for the stack to go idle.
+            ble_cmd_adv_disable();
+            vTaskDelay(10);
+            continue;
+        }
+
+        status = ble_cmd_adv_param_set(&adv_param);
+        if (status == BLE_ERR_OK)
+        {
+            break;
+        }
+
+        ChipLogError(DeviceLayer, "adv_param() status = %d, retrying (%d/%d)", status, attempt + 1,
+                     CHIP_ADV_PARAM_SET_MAX_ATTEMPTS);
+        vTaskDelay(10);
+    }
     if (status != BLE_ERR_OK)
     {
-        ChipLogError(DeviceLayer, "adv_param() status = %d\n", status);
+        ChipLogError(DeviceLayer, "adv_param() failed, status = %d", status);
         chipErr = BLE_ERR_STATE_TRANSLATE(status);
     }
     if (status == BLE_ERR_OK)
