@@ -83,6 +83,27 @@ def reference_flags(reference_source, pch_name):
     return flags
 
 
+def add_dependency(depfile, extra):
+    """Appends `extra` to the single make rule GCC wrote into `depfile`.
+
+    The .gch bakes in the flags of the reference compile command, so it goes
+    stale whenever those change - a new git hash in BUILD_HASH_INFO, a flipped
+    raf_enable_multi_control, any config edit. None of that touches this
+    action's command line or the headers GCC lists, so ninja would not rerun
+    it, and every consumer would silently reject the .gch from then on.
+
+    compile_commands.json is exactly the file that changes when any of those
+    change, and gn rewrites it only when its content differs. It cannot be
+    declared in the action's `inputs` because no target generates it, but a
+    depfile entry has no such restriction.
+    """
+    with open(depfile) as f:
+        rule = f.read().rstrip()
+
+    with open(depfile, "w") as f:
+        f.write("%s \\\n  %s\n" % (rule, extra))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--header", required=True, help="chip_pch.h in the source tree")
@@ -114,7 +135,10 @@ def main():
         if os.path.exists(output):
             os.remove(output)
         sys.stderr.write("build_pch.py: failed command was:\n  %s\n" % shlex.join(command))
-    return result.returncode
+        return result.returncode
+
+    add_dependency(args.depfile, "compile_commands.json")
+    return 0
 
 
 if __name__ == "__main__":
