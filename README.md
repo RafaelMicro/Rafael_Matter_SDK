@@ -87,3 +87,32 @@ example on RT58x series of SoCs
     -   [File structure](./rafael_docs/Rafael_App_File_Structure.md)
     -   [BLE Multi Control](./rafael_docs/Rafael_BLE_Multi_Control_Guide.md)
     -   [Rafael Submodules](./rafael_docs/Rafael_Submodules.md)
+
+<hr>
+
+## Example applications
+
+Each example carries its own guide covering the data model, the button/LED and
+UART interface on the EVK and the commands to try it out. Building, flashing and
+commissioning are common to every example and are covered by the getting started
+guides above.
+
+| Example | Device type | Guide |
+| :--- | :--- | :--- |
+| [lighting-app](./examples/lighting-app/rt58x) | Extended Color Light | [README](./examples/lighting-app/rt58x/README.md) |
+| [lighting-zigbee](./examples/lighting-zigbee/rt58x) | Extended Color Light, Matter + Zigbee dual mode (RT584HA4) | [README](./examples/lighting-zigbee/rt58x/README.md) |
+| [smart-plug-app](./examples/smart-plug-app/rt58x) | On/Off Plug-in Unit | [README](./examples/smart-plug-app/rt58x/README.md) |
+| [light-switch-app](./examples/light-switch-app/rt58x) | Generic Switch | [README](./examples/light-switch-app/rt58x/README.md) |
+| [lock-app](./examples/lock-app/rt58x) | Door Lock | [README](./examples/lock-app/rt58x/README.md) |
+| [window-app](./examples/window-app/rt58x) | Window Covering | [README](./examples/window-app/rt58x/README.md) |
+| [water-valve-app](./examples/water-valve-app/rt58x) | Water Valve | [README](./examples/water-valve-app/rt58x/README.md) |
+| [thermostat](./examples/thermostat/rt58x) | Thermostat | [README](./examples/thermostat/rt58x/README.md) |
+| [temperature-measurement-app](./examples/temperature-measurement-app/rt58x) | Temperature Sensor | [README](./examples/temperature-measurement-app/rt58x/README.md) |
+| [humidity-sensor-app](./examples/humidity-sensor-app/rt58x) | Humidity Sensor | [README](./examples/humidity-sensor-app/rt58x/README.md) |
+| [occupancy-sensor-app](./examples/occupancy-sensor-app/rt58x) | Occupancy Sensor | [README](./examples/occupancy-sensor-app/rt58x/README.md) |
+| [contact-sensor-app](./examples/contact-sensor-app/rt58x) | Contact Sensor | [README](./examples/contact-sensor-app/rt58x/README.md) |
+| [smoke-alarm-app](./examples/smoke-alarm-app/rt58x) | Smoke CO Alarm | [README](./examples/smoke-alarm-app/rt58x/README.md) |
+
+[examples/Template](./examples/Template) holds a starting-point project per
+Matter device type (44 of them), meant to be copied when bringing up a new
+application; the guides above cover the maintained examples.

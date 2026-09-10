@@ -1,125 +1,161 @@
-# CHIP RT58x Lighting Example
+# RT58x Lighting Example
 
-An example showing the use of CHIP on the Rafael Micro RT58x.
-***
--   [CHIP RT58x Lighting Example](#chip-RT58x-lighting-example)
-    -   [Introduction](#Introduction)
-    -   [Building](#Building)
-    -   [Flashing the Application](#Flashing-the-Application)
-    -   [Viewing Logging Output](#Viewing-Logging-Output)
-    -   [Running the Complete Example](#Running-the-Complete-Example)
-***
-<a name="introduction"></a>
+A Matter extended color light for the Rafael Micro RT58x family.
+
+> Setting up the build environment, building, flashing, reading the console log
+> and commissioning are the same for every RT58x example and are documented once
+> under [rafael_docs](../../../rafael_docs): start with
+> [Environment Setup Overview](../../../rafael_docs/matter_env_setup.md), then
+> [Flash Application](../../../rafael_docs/flash_application.md) and
+> [Matter over Thread Overview](../../../rafael_docs/matter_over_thread_overview.md).
+> This guide only covers what is specific to this example.
+
+- [Introduction](#introduction)
+- [User interface](#user-interface)
+- [Trying it out](#trying-it-out)
+- [Build options](#build-options)
+- [Related documents](#related-documents)
+
 ## Introduction
 
-The Rafael Lighting Example demonstrates a matter's dimmable light bulb, which uses a remote controller (ex: Chip controller) to control the state of these changes. You can follow this example as a reference for creating your application.
+The lighting example is an **Extended Color Light**: it supports on/off,
+dimming, hue/saturation, XY color and color temperature, plus groups and scenes.
+The RGB LED of the EVK is driven by three 16 kHz PWM channels, so brightness and
+color changes are directly visible on the board.
 
-The example's commission with the Rendez-vous exchanges security information over Bluetooth Low Energy (BLE) and is controlled by a Chip controller over the Openthread network (ex: Thread).
+| Signal | RT583 | RT584L / RT584H / RT584HA4 |
+| :--- | :--- | :--- |
+| PWM red | GPIO 22 | GPIO 8 |
+| PWM green | GPIO 23 | GPIO 9 |
+| PWM blue | GPIO 21 | GPIO 7 |
 
-The UART console on RT58x shows a URL for a QR Code containing the needed commissioning information for the BLE connection and starting the Rendez-vous procedure.
+The PWM duty is inverted for the EVK wiring (`calc_duty()` in
+[src/init_device_environment.cpp](src/init_device_environment.cpp)); adjust that
+function when adapting the example to a different LED driver.
 
-For creating products, the lighting example shows production templates, which employ Rafael's SDK platform to develop. By the way, Rafael also provides an RCP dangle solution for the matter's border router.
+This is the example used throughout the Rafael documentation, so it is the best
+starting point for a new product.
 
-<a name="building"></a>
-## Building
+Commissioning uses Bluetooth LE to hand over the Thread network credentials; once
+the device has joined the Thread network it is reachable over IPv6 and is
+controlled with Matter commands from any commissioner (chip-tool, Apple Home,
+Google Home, Amazon Alexa, SmartThings ...).
 
-<!-- -  ISP -->
-<!-- -   Supported hardware: -->
+### Data model
 
-*   Build the example application:
+| Endpoint | Device type | Server clusters |
+| :--- | :--- | :--- |
+| 0 | Root Node (0x0016) | Basic Information, Access Control, General / Network Commissioning, General Diagnostics, Thread Network Diagnostics, OTA Requestor, ... |
+| 1 | Extended Color Light (0x010D) | Identify, Groups, Scenes Management, On/Off, Level Control, Color Control, Descriptor |
 
-          cd ~/matter_sdk
-         ./scripts/examples/gn_rt58x_example.sh ./examples/lighting-app/rt58x ./out/lighting-app
+The full definition is in
+[../lighting-common/lighting-app.zap](../lighting-common/lighting-app.zap) (`.zap` for the ZAP tool, `.matter` for the
+generated data model). See
+[ZAP and codegen](../../../docs/zap_and_codegen/zap_intro.md) when changing it.
 
--   To delete generated executable, libraries and object files use:
+### Device identifiers
 
-          $ cd ~/matter_sdk
-          $ rm -rf ./out/
+| Field | Value |
+| :--- | :--- |
+| Vendor ID | `0x1346` (`0xFFF1` when built without `--certs`) |
+| Product ID | `0x400E` |
+| Product name | `DimmableLight` |
+| Setup passcode / discriminator | `20202021` / `3840` (test values) |
 
-    OR use GN/Ninja directly
+These are the built-in test values from
+[include/CHIPProjectConfig.h](include/CHIPProjectConfig.h); see
+[Rafael Factory Data](../../../rafael_docs/Rafael_Factory_Data.md) for provisioning production
+identifiers and certificates.
 
-          $ cd ~/matter_sdk/examples/lighting-app/RT58x
-          $ git submodule update --init
-          $ source third_party/matter_sdk/scripts/activate.sh
-          $ gn gen out/debug
-          $ ninja -C out/debug
+## User interface
 
-<!-- *   Build the example as Sleepy End Device (SED) -->
-<a name="flashing"></a>
+The buttons on GPIO 0 - GPIO 4 are configured as inputs with an internal 100 k
+pull-up and are therefore **active low**: pressing a button pulls the pin to
+ground. The indicator LEDs are **active low** as well - the application drives
+the pin low to light the LED.
 
-## Flashing the Application
+### Buttons
 
-<!-- -   On the command line:
+| GPIO | Action |
+| :--- | :--- |
+| 0 | Hold >= 6 s: factory reset (release earlier to cancel) |
+| 1 | Release: toggle the light on/off (the On/Off cluster is updated, so controllers see the change) |
 
-          $ cd ~/connectedhomeip/examples/lighting-app/rt58x
-          $ python3 out/debug/chip-rt58x-lighting-example.flash.py
+### LEDs
 
--   Or with the Ozone debugger, just load the .out file. -->
+| GPIO | Meaning |
+| :--- | :--- |
+| 20 | Commissioning indicator: lit while the device is not commissioned, off once commissioning completed. Also used by the Identify cluster |
+| RGB LED | The light itself - on/off, level and color are rendered on the PWM channels listed above |
 
-<a name="view-logging"></a>
+### UART interfaces
 
-## Viewing Logging Output
+| UART | Pins | Baud | Purpose |
+| :--- | :--- | :--- | :--- |
+| UART0 | TX = GPIO 17, RX = GPIO 16 | 2000000 | Console / debug log |
 
-The example application is built to use the UART for log output. For log output, you can use [Tera Term](https://ttssh2.osdn.jp/index.html.en) or other tools (ex: minicom) to show the log output.
+The console UART is set up in
+[examples/platform/rt58x/uart.cpp](../../platform/rt58x/uart.cpp) - the port,
+the TX/RX pins and the baud rate all come from the `HOSAL_UART_DEV_DECL(uart0_dev, ...)`
+declaration at the top of that file, so change them there to match your board.
 
-<a name="running-complete-example"></a>
 
-## Running the Complete Example
+### Group (multicast) control
 
--   It is assumed here that you already have an OpenThread border router configured and running. If not see the following guide [Openthread_border_router](https://github.com/RafaelMicro/matter_sdk/blob/master/docs/guides/openthread_border_router_pi.md) for more information on how to setup a border router on a raspberryPi.
+The light also accepts group commands, which is how several lights are switched
+at once. Refer to the _Configuring the server side for Group Commands_ and
+_Using the Client to Send Group (Multicast) Matter Commands_ sections of the
+[chip-tool documentation](https://github.com/project-chip/connectedhomeip/blob/master/examples/chip-tool/README.md).
 
--   User interface : This QR Code is be scanned by the CHIP Tool app For the Rendez-vous procedure over BLE
+## Trying it out
 
-        * The QR Code's URL can be found in the UART logs.
-          <info  > [SVR] Copy/paste the below URL in a browser to see the QR Code:
-          <info  > [SVR] https://project-chip.github.io/connectedhomeip/qrcode.html?data=...
+The examples below use `chip-tool`; every command ends with
+`<node-id> <endpoint-id>`, so `1 1` means "node 1, endpoint 1". Any other
+controller works the same way.
 
-    **LED D0** shows the states of the device and its connectivity. The following states are possible:
+```bash
+chip-tool onoff on 1 1
+chip-tool onoff off 1 1
+chip-tool onoff toggle 1 1
+chip-tool onoff read on-off 1 1
 
-        -   _Short Flash On (50 ms on/950 ms off)_ ; The device is in the
-            unprovisioned (unpaired) state and is waiting for a commissioning
-            application to connect.
+# dim to ~50 % with a 1 s transition (level, transitionTime, optionsMask, optionsOverride)
+chip-tool levelcontrol move-to-level 128 10 0 0 1 1
+chip-tool levelcontrol read current-level 1 1
 
-        -   _Rapid Even Flashing_ ; (100 ms on/100 ms off)_ &mdash; The device is in the
-            unprovisioned state and a commissioning application is connected through
-            Bluetooth LE.
+# color: hue/saturation and color temperature (mireds)
+chip-tool colorcontrol move-to-hue-and-saturation 240 254 0 0 0 1 1
+chip-tool colorcontrol move-to-color-temperature 370 0 0 0 1 1
+```
 
-        -   _Short Flash Off_ ; (950ms on/50ms off)_ &mdash; The device is fully
-            provisioned, but does not yet have full Thread network or service
-            connectivity.
+The console log follows every action:
 
-        -   _Solid On_ ; The device is fully provisioned and has full Thread
-            network and service connectivity.
+```
+LightMgr:ON: OFF->ON
+LightMgr:Level: 128
+```
 
-    **LED D6** Simulates the Light The following states are possible:
+## Build options
 
-        -   _Solid On_ ; Light is on
-        -   _Off_ ; Light is off
+The GN arguments of this example live in [args.gni](args.gni); the ones worth
+knowing about:
 
-    **Push Button SW2-6**
+| Argument | Default | Meaning |
+| :--- | :--- | :--- |
+| `chip_enable_ota_requestor` | `true` | Matter OTA software update support, see [Rafael Software Update](../../../rafael_docs/Rafael_Software_Update.md) |
+| `chip_build_libshell` | `false` | Matter shell on the console UART |
+| `chip_detail_logging` | `false` | Verbose (detail level) Matter logs |
+| `raf_enable_multi_control` | `false` | Rafael BLE multi-control channel, see [BLE Multi Control Guide](../../../rafael_docs/Rafael_BLE_Multi_Control_Guide.md) |
+| `chip_openthread_ftd` | `true` | Full Thread Device; the `--sed`/`--ssed` flags of the build script turn this off |
 
-        -   _Pressed and hold for 6 s_ : Initiates the factory reset of the device.
-            Releasing the button within the 6-second window cancels the factory reset
-            procedure. **LEDs** blink in unison when the factory reset procedure is
-            initiated.
+## Related documents
 
-*   You can provision and control the Chip device using the python controller,
-    Chip tool standalone, Android or iOS app
-
-    [CHIPTool](https://github.com/project-chip/connectedhomeip/blob/master/examples/chip-tool/README.md)
-
-    Here is an example with the CHIPTool:
-
-    chip-tool pairing ble-thread 1 hex:<operationalDataset> 20202021 3840
-
-    chip-tool onoff on 1 1
-
-<!-- ## OTA Software Update -->
-
-## Group Communication (Multicast)
-
-With this lighting example you can also use group communication to send Lighting
-commands to multiples devices at once. Please refer to the
-[chip-tool documentation](../../chip-tool/README.md) _Configuring the server
-side for Group Commands_ and _Using the Client to Send Group (Multicast) Matter
-Commands_
+- [Environment Setup Overview](../../../rafael_docs/matter_env_setup.md) - toolchain and SDK setup
+- [Linux / macOS setup](../../../rafael_docs/linux_macos_setup.md), [Windows (VSCode + WSL2) setup](../../../rafael_docs/windows_setup.md)
+- [Flash Application](../../../rafael_docs/flash_application.md) - ISP tool procedure
+- [Matter over Thread Overview](../../../rafael_docs/matter_over_thread_overview.md) - border router and controller setup
+- [Matter Application Note](../../../rafael_docs/Matter_Application_Note.md) - pairing with Apple Home / Google Home
+- [Rafael Software Update](../../../rafael_docs/Rafael_Software_Update.md) - building and delivering an OTA image
+- [Rafael Factory Data](../../../rafael_docs/Rafael_Factory_Data.md) - device attestation credentials
+- [Flash Layout Customer Guide](../../../rafael_docs/Flash_Layout_Customer_Guide.md) - flash partitioning per chip
+- [Rafael App File Structure](../../../rafael_docs/Rafael_App_File_Structure.md) - what each file of an example does

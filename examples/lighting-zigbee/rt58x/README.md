@@ -1,125 +1,172 @@
-# CHIP RT58x Lighting Example
+# RT58x Lighting Example (Matter + Zigbee dual mode)
 
-An example showing the use of CHIP on the Rafael Micro RT58x.
-***
--   [CHIP RT58x Lighting Example](#chip-RT58x-lighting-example)
-    -   [Introduction](#Introduction)
-    -   [Building](#Building)
-    -   [Flashing the Application](#Flashing-the-Application)
-    -   [Viewing Logging Output](#Viewing-Logging-Output)
-    -   [Running the Complete Example](#Running-the-Complete-Example)
-***
-<a name="introduction"></a>
+A dual-protocol light: the same device joins either a Matter/Thread fabric or a Zigbee network. RT584HA4 only.
+
+> Setting up the build environment, building, flashing, reading the console log
+> and commissioning are the same for every RT58x example and are documented once
+> under [rafael_docs](../../../rafael_docs): start with
+> [Environment Setup Overview](../../../rafael_docs/matter_env_setup.md), then
+> [Flash Application](../../../rafael_docs/flash_application.md) and
+> [Matter over Thread Overview](../../../rafael_docs/matter_over_thread_overview.md).
+> This guide only covers what is specific to this example.
+
+- [Introduction](#introduction)
+- [User interface](#user-interface)
+- [Trying it out](#trying-it-out)
+- [Build options](#build-options)
+- [Related documents](#related-documents)
+
 ## Introduction
 
-The Rafael Lighting Example demonstrates a matter's dimmable light bulb, which uses a remote controller (ex: Chip controller) to control the state of these changes. You can follow this example as a reference for creating your application.
+This example is the [lighting example](../../lighting-app/rt58x/README.md)
+extended with a **Zigbee** stack (ZBOSS) next to the Matter/Thread stack. The
+radio runs in multi-protocol mode (`HOSAL_RF_MODE_MULTI_PROTOCOL`) and at boot
+both stacks are started, so the device can be commissioned into **either**
+ecosystem. Whichever network claims the device first wins:
 
-The example's commission with the Rendez-vous exchanges security information over Bluetooth Low Energy (BLE) and is controlled by a Chip controller over the Openthread network (ex: Thread).
+- Matter commissioning completes -> the Zigbee task is suspended and `Matter` is
+  stored as the active protocol.
+- The device joins a Zigbee network -> the Matter task is suspended, the Thread
+  provisioning is erased and `Zigbee` is stored as the active protocol.
 
-The UART console on RT58x shows a URL for a QR Code containing the needed commissioning information for the BLE connection and starting the Rendez-vous procedure.
+The selected protocol is persisted in flash under the key `prot`, so the choice
+survives a reboot; the log prints it at boot (`Protocol: None|Matter|Zigbee`).
+A factory reset (button on GPIO 0, >= 6 s) resets the *active* protocol, and
+resets the stored selection back to `None` when no protocol has been selected
+yet.
 
-For creating products, the lighting example shows production templates, which employ Rafael's SDK platform to develop. By the way, Rafael also provides an RCP dangle solution for the matter's border router.
+> **Zigbee is only supported on the RT584HA4** (4 MB flash, it has the dedicated
+> Zigbee data partition). The build asserts on any other board.
 
-<a name="building"></a>
-## Building
+The Rafael BLE multi-control channel is enabled in this example
+(`raf_enable_multi_control = true`), which allows a BLE client to read the
+device information and drive clusters over BLE - see
+[BLE Multi Control Guide](../../../rafael_docs/Rafael_BLE_Multi_Control_Guide.md).
+The Matter shell is enabled as well (`chip_build_libshell = true`).
 
-<!-- -  ISP -->
-<!-- -   Supported hardware: -->
+Commissioning uses Bluetooth LE to hand over the Thread network credentials; once
+the device has joined the Thread network it is reachable over IPv6 and is
+controlled with Matter commands from any commissioner (chip-tool, Apple Home,
+Google Home, Amazon Alexa, SmartThings ...).
 
-*   Build the example application:
+### Data model
 
-          cd ~/matter_sdk
-         ./scripts/examples/gn_rt58x_example.sh ./examples/lighting-app/rt58x ./out/lighting-app
+| Endpoint | Device type | Server clusters |
+| :--- | :--- | :--- |
+| 0 | Root Node (0x0016) | Basic Information, Access Control, General / Network Commissioning, General Diagnostics, Thread Network Diagnostics, OTA Requestor, ... |
+| 1 | Extended Color Light (0x010D) | Identify, Groups, Scenes Management, On/Off, Level Control, Color Control, Descriptor |
 
--   To delete generated executable, libraries and object files use:
+The full definition is in
+[../lighting-common/lighting-app.zap](../lighting-common/lighting-app.zap) (`.zap` for the ZAP tool, `.matter` for the
+generated data model). See
+[ZAP and codegen](../../../docs/zap_and_codegen/zap_intro.md) when changing it.
 
-          $ cd ~/matter_sdk
-          $ rm -rf ./out/
+### Device identifiers
 
-    OR use GN/Ninja directly
+| Field | Value |
+| :--- | :--- |
+| Vendor ID | `0x1346` (`0xFFF1` when built without `--certs`) |
+| Product ID | `0x400E` |
+| Product name | `DimmableLight` |
+| Setup passcode / discriminator | `20202021` / `3840` (test values) |
 
-          $ cd ~/matter_sdk/examples/lighting-app/RT58x
-          $ git submodule update --init
-          $ source third_party/matter_sdk/scripts/activate.sh
-          $ gn gen out/debug
-          $ ninja -C out/debug
+These are the built-in test values from
+[include/CHIPProjectConfig.h](include/CHIPProjectConfig.h); see
+[Rafael Factory Data](../../../rafael_docs/Rafael_Factory_Data.md) for provisioning production
+identifiers and certificates.
 
-<!-- *   Build the example as Sleepy End Device (SED) -->
-<a name="flashing"></a>
+## User interface
 
-## Flashing the Application
+The buttons on GPIO 0 - GPIO 4 are configured as inputs with an internal 100 k
+pull-up and are therefore **active low**: pressing a button pulls the pin to
+ground. The indicator LEDs are **active low** as well - the application drives
+the pin low to light the LED.
 
-<!-- -   On the command line:
+### Buttons
 
-          $ cd ~/connectedhomeip/examples/lighting-app/rt58x
-          $ python3 out/debug/chip-rt58x-lighting-example.flash.py
+| GPIO | Action |
+| :--- | :--- |
+| 0 | Hold >= 6 s: factory reset of the active protocol (Matter or Zigbee); with no protocol selected yet it clears the stored settings and reboots |
 
--   Or with the Ozone debugger, just load the .out file. -->
+### LEDs
 
-<a name="view-logging"></a>
+| GPIO | Meaning |
+| :--- | :--- |
+| 20 | Commissioning indicator: lit while the device is not commissioned, off once commissioning completed. Also used by the Identify cluster |
+| RGB LED | The light itself. RT584HA4 PWM pins: red = GPIO 8, green = GPIO 9, blue = GPIO 7 |
 
-## Viewing Logging Output
+### UART interfaces
 
-The example application is built to use the UART for log output. For log output, you can use [Tera Term](https://ttssh2.osdn.jp/index.html.en) or other tools (ex: minicom) to show the log output.
+| UART | Pins | Baud | Purpose |
+| :--- | :--- | :--- | :--- |
+| UART0 | TX = GPIO 17, RX = GPIO 16 | 2000000 | Console / debug log |
 
-<a name="running-complete-example"></a>
+The console UART is set up in
+[examples/platform/rt58x/uart.cpp](../../platform/rt58x/uart.cpp) - the port,
+the TX/RX pins and the baud rate all come from the `HOSAL_UART_DEV_DECL(uart0_dev, ...)`
+declaration at the top of that file, so change them there to match your board.
 
-## Running the Complete Example
+## Trying it out
 
--   It is assumed here that you already have an OpenThread border router configured and running. If not see the following guide [Openthread_border_router](https://github.com/RafaelMicro/matter_sdk/blob/master/docs/guides/openthread_border_router_pi.md) for more information on how to setup a border router on a raspberryPi.
+The examples below use `chip-tool`; every command ends with
+`<node-id> <endpoint-id>`, so `1 1` means "node 1, endpoint 1". Any other
+controller works the same way.
 
--   User interface : This QR Code is be scanned by the CHIP Tool app For the Rendez-vous procedure over BLE
+### As a Matter light
 
-        * The QR Code's URL can be found in the UART logs.
-          <info  > [SVR] Copy/paste the below URL in a browser to see the QR Code:
-          <info  > [SVR] https://project-chip.github.io/connectedhomeip/qrcode.html?data=...
+Identical to the [lighting example](../../lighting-app/rt58x/README.md):
 
-    **LED D0** shows the states of the device and its connectivity. The following states are possible:
+```bash
+chip-tool pairing ble-thread 1 hex:<operationalDataset> 20202021 3840
+chip-tool onoff toggle 1 1
+chip-tool levelcontrol move-to-level 128 10 0 0 1 1
+chip-tool colorcontrol move-to-hue-and-saturation 240 254 0 0 0 1 1
+```
 
-        -   _Short Flash On (50 ms on/950 ms off)_ ; The device is in the
-            unprovisioned (unpaired) state and is waiting for a commissioning
-            application to connect.
+After commissioning completes the log confirms that Zigbee has been shut down:
 
-        -   _Rapid Even Flashing_ ; (100 ms on/100 ms off)_ &mdash; The device is in the
-            unprovisioned state and a commissioning application is connected through
-            Bluetooth LE.
+```
+Deleting Zigbee task
+```
 
-        -   _Short Flash Off_ ; (950ms on/50ms off)_ &mdash; The device is fully
-            provisioned, but does not yet have full Thread network or service
-            connectivity.
+### As a Zigbee light
 
-        -   _Solid On_ ; The device is fully provisioned and has full Thread
-            network and service connectivity.
+Open the network on a Zigbee coordinator and let the device perform BDB network
+steering (it retries automatically while no protocol has been selected). Once it
+joins, the log reports the network it attached to:
 
-    **LED D6** Simulates the Light The following states are possible:
+```
+ZigBee APP joined
+PAN ID: 1A62, Short Addr: 4E7B, Channel: 15
+Deleting Matter task
+```
 
-        -   _Solid On_ ; Light is on
-        -   _Off_ ; Light is off
+From then on the light answers Zigbee ZCL On/Off, Level Control and Color
+Control commands from the coordinator.
 
-    **Push Button SW2-6**
+## Build options
 
-        -   _Pressed and hold for 6 s_ : Initiates the factory reset of the device.
-            Releasing the button within the 6-second window cancels the factory reset
-            procedure. **LEDs** blink in unison when the factory reset procedure is
-            initiated.
+The GN arguments of this example live in [args.gni](args.gni); the ones worth
+knowing about:
 
-*   You can provision and control the Chip device using the python controller,
-    Chip tool standalone, Android or iOS app
+| Argument | Default | Meaning |
+| :--- | :--- | :--- |
+| `chip_enable_ota_requestor` | `true` | Matter OTA software update support, see [Rafael Software Update](../../../rafael_docs/Rafael_Software_Update.md) |
+| `chip_build_libshell` | `true` | Matter shell on the console UART |
+| `chip_detail_logging` | `false` | Verbose (detail level) Matter logs |
+| `raf_enable_multi_control` | `true` | Rafael BLE multi-control channel, see [BLE Multi Control Guide](../../../rafael_docs/Rafael_BLE_Multi_Control_Guide.md) |
+| `chip_openthread_ftd` | `true` | Full Thread Device; the `--sed`/`--ssed` flags of the build script turn this off |
 
-    [CHIPTool](https://github.com/project-chip/connectedhomeip/blob/master/examples/chip-tool/README.md)
+## Related documents
 
-    Here is an example with the CHIPTool:
-
-    chip-tool pairing ble-thread 1 hex:<operationalDataset> 20202021 3840
-
-    chip-tool onoff on 1 1
-
-<!-- ## OTA Software Update -->
-
-## Group Communication (Multicast)
-
-With this lighting example you can also use group communication to send Lighting
-commands to multiples devices at once. Please refer to the
-[chip-tool documentation](../../chip-tool/README.md) _Configuring the server
-side for Group Commands_ and _Using the Client to Send Group (Multicast) Matter
-Commands_
+- [Environment Setup Overview](../../../rafael_docs/matter_env_setup.md) - toolchain and SDK setup
+- [Linux / macOS setup](../../../rafael_docs/linux_macos_setup.md), [Windows (VSCode + WSL2) setup](../../../rafael_docs/windows_setup.md)
+- [Flash Application](../../../rafael_docs/flash_application.md) - ISP tool procedure
+- [Matter over Thread Overview](../../../rafael_docs/matter_over_thread_overview.md) - border router and controller setup
+- [Matter Application Note](../../../rafael_docs/Matter_Application_Note.md) - pairing with Apple Home / Google Home
+- [Rafael Software Update](../../../rafael_docs/Rafael_Software_Update.md) - building and delivering an OTA image
+- [Rafael Factory Data](../../../rafael_docs/Rafael_Factory_Data.md) - device attestation credentials
+- [Flash Layout Customer Guide](../../../rafael_docs/Flash_Layout_Customer_Guide.md) - flash partitioning per chip
+- [Rafael App File Structure](../../../rafael_docs/Rafael_App_File_Structure.md) - what each file of an example does
+- [BLE Multi Control Guide](../../../rafael_docs/Rafael_BLE_Multi_Control_Guide.md) - controlling the device over BLE
+- [Lighting example](../../lighting-app/rt58x/README.md) - the single-protocol version of this application
