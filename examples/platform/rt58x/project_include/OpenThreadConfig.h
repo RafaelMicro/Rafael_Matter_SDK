@@ -75,7 +75,11 @@
 /* ========================================================================== */
 /* MAC                                                                         */
 /* ========================================================================== */
-
+#if CONFIG_HOSAL_SOC_IDLE_SLEEP
+#define OPENTHREAD_CONFIG_MAC_MAX_CSMA_BACKOFFS_DIRECT 4
+#else
+#define OPENTHREAD_CONFIG_MAC_MAX_CSMA_BACKOFFS_DIRECT 8
+#endif
 #define OPENTHREAD_CONFIG_MAC_SOFTWARE_TX_SECURITY_ENABLE 1
 #define OPENTHREAD_CONFIG_MAC_SOFTWARE_CSMA_BACKOFF_ENABLE 0
 #define OPENTHREAD_CONFIG_MAC_SOFTWARE_RETRANSMIT_ENABLE 0
