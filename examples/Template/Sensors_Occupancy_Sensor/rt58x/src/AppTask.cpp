@@ -457,14 +457,17 @@ void AppTask::FunctionHandler(AppEvent * aEvent)
             {
                 sAppTask.mFunction             = kFunction_Switch_1;
                 sAppTask.mFunctionSwitchActive = true;
+
+                // Button held down stands in for the sensor detecting occupancy.
+                OccuMgr().SetOccupancy(true);
             }
         }
         else
         {
             if (sAppTask.mFunctionSwitchActive && sAppTask.mFunction == kFunction_Switch_1)
             {
-                // toggle the Occupancy value
-                OccuMgr().ToggleOccupancy();
+                // Button released: detection ends, the cluster clears Occupancy after HoldTime.
+                OccuMgr().SetOccupancy(false);
 
                 sAppTask.mFunction             = kFunction_NoneSelected;
                 sAppTask.mFunctionSwitchActive = false;

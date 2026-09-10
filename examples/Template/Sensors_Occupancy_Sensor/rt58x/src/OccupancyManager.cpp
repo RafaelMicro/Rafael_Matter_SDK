@@ -24,6 +24,8 @@
 #include "semphr.h"
 
 using namespace chip;
+using namespace chip::app;
+using namespace chip::app::Clusters;
 using namespace ::chip::DeviceLayer;
 
 constexpr EndpointId kOccupancyEndpoint = 1;
@@ -33,47 +35,30 @@ constexpr uint16_t kHoldTimeDefault = 10;
 constexpr uint16_t kHoldTimeMin     = 1;
 constexpr uint16_t kHoldTimeMax     = 300;
 
-namespace OccupancyAttr = chip::app::Clusters::OccupancySensing::Attributes;
-using namespace chip::app::Clusters::OccupancySensing;
-
-// OccupancySensing::Instance handles FeatureMap, HoldTime, HoldTimeLimits via AAI
-static Instance gOccupancySensingInstance(BitMask<Feature>(Feature::kPassiveInfrared));
-
 OccupancyManager OccupancyManager::sOccuMgr;
 
 CHIP_ERROR OccupancyManager::Init()
 {
-    // Init OccupancySensing AAI instance (handles FeatureMap, HoldTime, HoldTimeLimits)
-    ReturnErrorOnFailure(gOccupancySensingInstance.Init());
+    // The code-driven cluster is registered by the ZAP integration and owns FeatureMap,
+    // OccupancySensorType, OccupancySensorTypeBitmap and the HoldTime countdown. The
+    // application only publishes the sensor state and the hold time this device supports.
+    auto * cluster = OccupancySensing::FindClusterOnEndpoint(kOccupancyEndpoint);
+    VerifyOrReturnError(cluster != nullptr, CHIP_ERROR_INCORRECT_STATE);
 
-    // Set HoldTimeLimits
-    Structs::HoldTimeLimitsStruct::Type holdTimeLimits;
-    holdTimeLimits.holdTimeMin     = kHoldTimeMin;
-    holdTimeLimits.holdTimeMax     = kHoldTimeMax;
-    holdTimeLimits.holdTimeDefault = kHoldTimeDefault;
-    ReturnErrorOnFailure(SetHoldTimeLimits(kOccupancyEndpoint, holdTimeLimits));
+    cluster->SetHoldTimeLimits({ .holdTimeMin = kHoldTimeMin, .holdTimeMax = kHoldTimeMax, .holdTimeDefault = kHoldTimeDefault });
 
-    // Set initial HoldTime
-    ReturnErrorOnFailure(SetHoldTime(kOccupancyEndpoint, kHoldTimeDefault));
-
-    // Initialize OccupancySensorType: kPir (0)
-    OccupancyAttr::OccupancySensorType::Set(kOccupancyEndpoint, OccupancySensorTypeEnum::kPir);
-
-    // Initialize OccupancySensorTypeBitmap: kPir (0x1)
-    chip::BitMask<OccupancySensorTypeBitmap> bitmap;
-    bitmap.Set(OccupancySensorTypeBitmap::kPir);
-    OccupancyAttr::OccupancySensorTypeBitmap::Set(kOccupancyEndpoint, bitmap);
-
-    // Ensure occupancy starts as unoccupied
-    mOccupancy = 0;
-    OccupancyAttr::Occupancy::Set(kOccupancyEndpoint, mOccupancy);
-
-    // Create HoldTime auto-unoccupy timer (one-shot)
-    mHoldTimer = xTimerCreateStatic("HoldTmr", pdMS_TO_TICKS(kHoldTimeDefault * 1000), pdFALSE, nullptr, HoldTimerEventHandler,
-                                    &mStaticHoldTimerStruct);
-    if (mHoldTimer == NULL)
+    DataModel::ActionReturnStatus status = cluster->SetHoldTime(kHoldTimeDefault);
+    if (!status.IsSuccess())
     {
-        ChipLogError(NotSpecified, "HoldTimer create failed");
+        ChipLogError(NotSpecified, "Failed to set HoldTime");
+    }
+
+    // Mirrors the cluster's HoldTime countdown for the indicator LED only (one-shot).
+    mLedTimer = xTimerCreateStatic("OccuLedTmr", pdMS_TO_TICKS(kHoldTimeDefault * 1000), pdFALSE, nullptr, LedTimerEventHandler,
+                                   &mStaticLedTimerStruct);
+    if (mLedTimer == NULL)
+    {
+        ChipLogError(NotSpecified, "OccuLedTimer create failed");
         return APP_ERROR_CREATE_TIMER_FAILED;
     }
 
@@ -83,44 +68,37 @@ CHIP_ERROR OccupancyManager::Init()
 
 void OccupancyManager::AttributeChangeHandler(EndpointId endpointId, AttributeId attributeId, uint8_t * value, uint16_t size) {}
 
-CHIP_ERROR OccupancyManager::ToggleOccupancy()
+CHIP_ERROR OccupancyManager::SetOccupancy(bool detected)
 {
-    mOccupancy ^= 0x1;
+    auto * cluster = OccupancySensing::FindClusterOnEndpoint(kOccupancyEndpoint);
+    VerifyOrReturnError(cluster != nullptr, CHIP_ERROR_INCORRECT_STATE);
 
-    if (mOccupancy & 0x1)
+    PlatformMgr().LockChipStack();
+    // true sets Occupancy right away and cancels any running countdown; false only starts the
+    // HoldTime countdown, after which the cluster clears Occupancy itself.
+    cluster->SetOccupancy(detected);
+    const uint16_t holdTime = cluster->GetHoldTime();
+    PlatformMgr().UnlockChipStack();
+
+    if (detected)
     {
-        ChipLogProgress(NotSpecified, "Occupied");
+        ChipLogProgress(NotSpecified, "Occupancy detected");
+        xTimerStop(mLedTimer, 0);
         hosal_gpio_pin_clear(21);
-
-        // Start hold timer - read current HoldTime
-        uint16_t * holdTime = GetHoldTimeForEndpoint(kOccupancyEndpoint);
-        uint16_t holdMs     = (holdTime != nullptr) ? (*holdTime * 1000) : (kHoldTimeDefault * 1000);
-        xTimerChangePeriod(mHoldTimer, pdMS_TO_TICKS(holdMs), 0);
-        xTimerStart(mHoldTimer, 0);
     }
     else
     {
-        ChipLogProgress(NotSpecified, "Unoccupied");
-        hosal_gpio_pin_set(21);
-        xTimerStop(mHoldTimer, 0);
+        ChipLogProgress(NotSpecified, "Detection ended - will clear in %u s", holdTime);
+        xTimerChangePeriod(mLedTimer, pdMS_TO_TICKS(holdTime * 1000), 0);
+        xTimerStart(mLedTimer, 0);
     }
 
-    PlatformMgr().LockChipStack();
-    OccupancyAttr::Occupancy::Set(kOccupancyEndpoint, mOccupancy);
-    PlatformMgr().UnlockChipStack();
-
-    ChipLogProgress(NotSpecified, "Occupancy: %d", mOccupancy);
     return CHIP_NO_ERROR;
 }
 
-void OccupancyManager::HoldTimerEventHandler(TimerHandle_t xTimer)
+void OccupancyManager::LedTimerEventHandler(TimerHandle_t xTimer)
 {
-    // HoldTime expired: auto-clear to unoccupied
-    ChipLogProgress(NotSpecified, "HoldTime expired, clearing occupancy");
-
-    PlatformMgr().LockChipStack();
-    OccuMgr().mOccupancy = 0;
+    // HoldTime elapsed: the cluster has cleared Occupancy, follow it with the LED.
+    ChipLogProgress(NotSpecified, "HoldTime expired, occupancy cleared");
     hosal_gpio_pin_set(21);
-    OccupancyAttr::Occupancy::Set(kOccupancyEndpoint, static_cast<uint8_t>(0));
-    PlatformMgr().UnlockChipStack();
 }

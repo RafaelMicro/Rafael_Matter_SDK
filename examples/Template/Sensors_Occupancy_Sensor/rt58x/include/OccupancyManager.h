@@ -25,8 +25,7 @@
 
 #include "FreeRTOS.h"
 #include "timers.h" // provides FreeRTOS timer support
-#include <app-common/zap-generated/attributes/Accessors.h>
-#include <app/clusters/occupancy-sensor-server/occupancy-sensor-server.h>
+#include <app/clusters/occupancy-sensor-server/CodegenIntegration.h>
 
 #include <lib/core/CHIPError.h>
 
@@ -35,20 +34,19 @@ class OccupancyManager
 public:
     CHIP_ERROR Init();
     void AttributeChangeHandler(chip::EndpointId endpointId, chip::AttributeId attributeId, uint8_t * value, uint16_t size);
-    int16_t GetCurrentTemp();
-    CHIP_ERROR ToggleOccupancy();
+    // Reports the raw sensor state to the cluster: true while occupancy is detected, false once
+    // detection ends. The cluster clears Occupancy HoldTime seconds after the false.
+    CHIP_ERROR SetOccupancy(bool detected);
 
 private:
     friend OccupancyManager & OccuMgr();
 
-    static void HoldTimerEventHandler(TimerHandle_t xTimer);
+    static void LedTimerEventHandler(TimerHandle_t xTimer);
 
-    uint8_t mOccupancy;
-    int16_t mOccupancySensorType;
-    int16_t mOccupancySensorTypeBitmap;
-
-    TimerHandle_t mHoldTimer;
-    StaticTimer_t mStaticHoldTimerStruct;
+    // The cluster owns the HoldTime countdown that clears Occupancy; this timer only mirrors it
+    // so that the indicator LED goes out at the same moment.
+    TimerHandle_t mLedTimer;
+    StaticTimer_t mStaticLedTimerStruct;
 
     static OccupancyManager sOccuMgr;
 };

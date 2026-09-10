@@ -68,28 +68,27 @@ CHIP_ERROR OccupancyManager::Init()
 
 void OccupancyManager::AttributeChangeHandler(EndpointId endpointId, AttributeId attributeId, uint8_t * value, uint16_t size) {}
 
-CHIP_ERROR OccupancyManager::ToggleOccupancy()
+CHIP_ERROR OccupancyManager::SetOccupancy(bool detected)
 {
     auto * cluster = OccupancySensing::FindClusterOnEndpoint(kOccupancyEndpoint);
     VerifyOrReturnError(cluster != nullptr, CHIP_ERROR_INCORRECT_STATE);
 
     PlatformMgr().LockChipStack();
-    // With HoldTime enabled, SetOccupancy(false) only starts the cluster's countdown:
-    // Occupancy is cleared by the cluster once HoldTime elapses.
-    const bool occupied = !cluster->IsOccupied();
-    cluster->SetOccupancy(occupied);
+    // true sets Occupancy right away and cancels any running countdown; false only starts the
+    // HoldTime countdown, after which the cluster clears Occupancy itself.
+    cluster->SetOccupancy(detected);
     const uint16_t holdTime = cluster->GetHoldTime();
     PlatformMgr().UnlockChipStack();
 
-    if (occupied)
+    if (detected)
     {
-        ChipLogProgress(NotSpecified, "Occupied");
-        hosal_gpio_pin_clear(21);
+        ChipLogProgress(NotSpecified, "Occupancy detected");
         xTimerStop(mLedTimer, 0);
+        hosal_gpio_pin_clear(21);
     }
     else
     {
-        ChipLogProgress(NotSpecified, "Unoccupied in %u s (HoldTime)", holdTime);
+        ChipLogProgress(NotSpecified, "Detection ended - will clear in %u s", holdTime);
         xTimerChangePeriod(mLedTimer, pdMS_TO_TICKS(holdTime * 1000), 0);
         xTimerStart(mLedTimer, 0);
     }
