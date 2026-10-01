@@ -112,7 +112,7 @@ CHIP_ERROR DiagnosticDataProviderImpl::GetThreadMetrics(ThreadMetrics ** threadM
 
         for (x = 0; x < arraySize; x++)
         {
-            ThreadMetrics * thread = new ThreadMetrics();
+            ThreadMetrics * thread = Platform::New<ThreadMetrics>();
             if (thread)
             {
                 Platform::CopyString(thread->NameBuf, taskStatusArray[x].pcTaskName);
@@ -136,6 +136,17 @@ CHIP_ERROR DiagnosticDataProviderImpl::GetThreadMetrics(ThreadMetrics ** threadM
 
     return CHIP_NO_ERROR;
 }
+
+void DiagnosticDataProviderImpl::ReleaseThreadMetrics(ThreadMetrics * threadMetrics)
+{
+    while (threadMetrics)
+    {
+        ThreadMetrics * thread = threadMetrics;
+        threadMetrics          = threadMetrics->Next;
+        Platform::Delete(thread);
+    }
+}
+
 CHIP_ERROR DiagnosticDataProviderImpl::GetNetworkInterfaces(NetworkInterface ** netifpp)
 {
     NetworkInterface * ifp = Platform::New<NetworkInterface>();
