@@ -159,6 +159,8 @@ To build for a different board or after a configuration change, remove
   device attestation credentials
 - [rafael_docs/Rafael_Software_Update.md](rafael_docs/Rafael_Software_Update.md) -
   OTA image build and delivery
+- [rafael_docs/Rafael_Sign_Image.md](rafael_docs/Rafael_Sign_Image.md) -
+  signing application images for secure boot
 - [rafael_docs/Rafael_Submodules.md](rafael_docs/Rafael_Submodules.md) -
   submodule layout of the fork
 - Each example also has its own `examples/<project-name>/rt58x/README.md`.

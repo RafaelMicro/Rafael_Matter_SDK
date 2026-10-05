@@ -1,21 +1,21 @@
 {
     "C_Cpp.intelliSenseEngineFallback": "Enabled",
-    "C_Cpp.default.includePath": [
-        "${workspaceFolder}/build/default/src/",
-        "${workspaceFolder}/build/default/src/**",
-        "${workspaceFolder}/build/default/src/include/**",
-        "${workspaceFolder}/build/default/src/lib/**",
-        "${workspaceFolder}/config/standalone/",
-        "${workspaceFolder}/config/standalone/**",
-        "${workspaceFolder}/examples/**",
-        "${workspaceFolder}/src/**",
-        "${workspaceFolder}/src/include/",
-        "${workspaceFolder}/src/include/**",
-        "${workspaceFolder}/src/lib/**",
-        "${workspaceFolder}/src/system/**",
-        "${workspaceFolder}/third_party/nlassert/repo/include/**",
-        "${workspaceFolder}/third_party/nlio/repo/include/**"
-    ],
+    // Large non-source trees that the C/C++ tag parser should never scan.
+    // Do not exclude */third_party/connectedhomeip: compile_commands.json
+    // reaches every source file through that symlink.
+    "C_Cpp.files.exclude": {
+        "**/.vscode": true,
+        "**/.vs": true,
+        "**/.git": true,
+        "**/.environment/pigweed-venv/**": true,
+        "**/.environment/gn_out/**": true,
+        "**/.environment/cipd/packages/pigweed/**": true,
+        "**/.environment/cipd/packages/zap/**": true,
+        "**/.environment/cipd/packages/.cipd/**": true,
+        "**/out/*/*/obj/**": true,
+        "**/out/*/*/lib/**": true,
+        "**/third_party/boringssl/**": true
+    },
     "[cpp]": {
         "editor.defaultFormatter": "xaver.clang-format"
     },
@@ -122,7 +122,7 @@
     "files.watcherExclude": {
         "**/.git/objects/**": true,
         "**/.git/subtree-cache/**": true,
-        "out/": true,
+        "**/out/**": true,
         "**/third_party/**": true
     },
     "files.eol": "\n",

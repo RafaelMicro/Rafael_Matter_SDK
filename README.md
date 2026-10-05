@@ -9,7 +9,7 @@ Welcome to the Rafael RT58x Matter SDK github repo. It is built on top of the [M
     -   RT584H (2MB flash)
     -   RT584HA4 (4MB flash, Support Matter+Zigbee dual mode)
 
-![The RT58x SDK repository structure](./rafael_docs/images/sdk_repo.png)
+![The RT58x SDK repository structure](./rafael_docs/images/MatterSDK.png)
 
 <hr>
 
@@ -19,7 +19,7 @@ The following diagram shows a simplified structure of a Matter application that
 runs on the RT58x platform and uses Bluetooth® LE and Thread stacks for
 communication purposes:
 
-![rt58x platform overview](./rafael_docs/images/stack.png)
+![rt58x platform overview](./rafael_docs/images/Stack.png)
 
 > **Note**: For readability, the diagram does not show all projects components,
 > only the most important ones for a typical Matter application.
