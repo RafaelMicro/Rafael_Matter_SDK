@@ -19,6 +19,7 @@
 #include "OTAImageProcessorImpl.h"
 #include <app/clusters/ota-requestor/OTADownloader.h>
 #include <app/clusters/ota-requestor/OTARequestorInterface.h>
+#include <lib/support/BufferReader.h>
 
 // extern "C" {
 // #include "platform/bootloader/api/btl_interface.h"
@@ -69,6 +70,12 @@ uint32_t OTAImageProcessorImpl::mWriteOffset                                    
 uint16_t OTAImageProcessorImpl::writeBufOffset                                          = 0;
 uint8_t OTAImageProcessorImpl::writeBuffer[kAlignmentBytes] __attribute__((aligned(4))) = { 0 };
 uint32_t OTAImageProcessorImpl::otaNewVersion                                           = 0;
+uint8_t OTAImageProcessorImpl::rafaelHeader[kRafaelHeaderSize]                          = { 0 };
+uint8_t OTAImageProcessorImpl::rafaelHeaderOffset                                       = 0;
+bool OTAImageProcessorImpl::rafaelHeaderParsed                                          = false;
+uint8_t OTAImageProcessorImpl::imageInfo                                                = 0;
+uint32_t OTAImageProcessorImpl::signatureLen                                            = 0;
+uint32_t OTAImageProcessorImpl::imageLen                                                = 0;
 
 CHIP_ERROR OTAImageProcessorImpl::PrepareDownload()
 {
@@ -180,6 +187,11 @@ void OTAImageProcessorImpl::HandlePrepareDownload(intptr_t context)
     writeBufOffset                          = 0;
     mWriteOffset                            = 0;
     imageProcessor->mParams.downloadedBytes = 0;
+    rafaelHeaderOffset                      = 0;
+    rafaelHeaderParsed                      = false;
+    imageInfo                               = 0;
+    signatureLen                            = 0;
+    imageLen                                = 0;
 
     imageProcessor->mHeaderParser.Init();
 
@@ -265,6 +277,19 @@ void OTAImageProcessorImpl::HandleApply(intptr_t context)
         return;
     }
 
+    if (!rafaelHeaderParsed)
+    {
+        ChipLogError(SoftwareUpdate, "ERROR: OTA image is too short to hold the Rafael image header");
+        return;
+    }
+
+    if (imageProcessor->mParams.downloadedBytes != imageLen)
+    {
+        ChipLogError(SoftwareUpdate, "ERROR: Downloaded %" PRIu32 " bytes, image length is %" PRIu32,
+                     static_cast<uint32_t>(imageProcessor->mParams.downloadedBytes), imageLen);
+        return;
+    }
+
     chip::DeviceLayer::ConfigurationMgr().StoreBootReason(5); // kSoftwareUpdateCompleted
 
     OTARequestorInterface * requestor = chip::GetRequestorInstance();
@@ -277,8 +302,8 @@ void OTAImageProcessorImpl::HandleApply(intptr_t context)
 
     t_bootloader_ota_info.fotabank_ready     = FOTA_IMAGE_READY;
     t_bootloader_ota_info.fotabank_startaddr = FOTA_UPDATE_BUFFER_FW_ADDRESS;
-    t_bootloader_ota_info.fota_image_info    = FOTA_IMAGE_INFO_COMPRESSED;
-    t_bootloader_ota_info.signature_len      = 0;
+    t_bootloader_ota_info.fota_image_info    = imageInfo;
+    t_bootloader_ota_info.signature_len      = signatureLen;
     t_bootloader_ota_info.target_startaddr   = APP_START_ADDRESS;
     t_bootloader_ota_info.fotabank_datalen   = imageProcessor->mParams.downloadedBytes;
     t_bootloader_ota_info.reserved[0]        = otaNewVersion;
@@ -322,7 +347,6 @@ void OTAImageProcessorImpl::HandleAbort(intptr_t context)
 
 void OTAImageProcessorImpl::HandleProcessBlock(intptr_t context)
 {
-    uint32_t err          = STATUS_SUCCESS;
     auto * imageProcessor = reinterpret_cast<OTAImageProcessorImpl *>(context);
 
     if (imageProcessor == nullptr)
@@ -346,16 +370,34 @@ void OTAImageProcessorImpl::HandleProcessBlock(intptr_t context)
         return;
     }
 
+    chip_error = imageProcessor->ProcessRafaelHeader(block);
+    if (chip_error != CHIP_NO_ERROR)
+    {
+        ChipLogError(SoftwareUpdate, "Rafael image header error %s", chip::ErrorStr(chip_error));
+        imageProcessor->mDownloader->EndDownload(CHIP_ERROR_INVALID_FILE_IDENTIFIER);
+        return;
+    }
+
+    chip_error = imageProcessor->WriteImageData(block);
+    if (chip_error != CHIP_NO_ERROR)
+    {
+        imageProcessor->mDownloader->EndDownload(chip_error);
+        return;
+    }
+
+    imageProcessor->mDownloader->FetchNextData();
+}
+
+CHIP_ERROR OTAImageProcessorImpl::WriteImageData(ByteSpan data)
+{
+    uint32_t err = STATUS_SUCCESS;
+
     // Copy data into the word-aligned writeBuffer, once it fills write its contents to the bootloader storage
     // Final data block is handled in HandleFinalize().
-    uint32_t blockReadOffset = 0;
-
-    // info("===> fota block len: %d\r\n", block.size());
-    while (blockReadOffset < block.size())
+    for (uint8_t byte : data)
     {
-        writeBuffer[writeBufOffset] = *((block.data()) + blockReadOffset);
+        writeBuffer[writeBufOffset] = byte;
         writeBufOffset++;
-        blockReadOffset++;
         if (writeBufOffset == kAlignmentBytes)
         {
             writeBufOffset = 0;
@@ -374,15 +416,59 @@ void OTAImageProcessorImpl::HandleProcessBlock(intptr_t context)
                 //     ChipLogError(SoftwareUpdate, "ERROR: In HandleProcessBlock bootloader_eraseWriteStorage() error %ld", err);
                 ChipLogError(SoftwareUpdate, "ERROR: In page: %ld, address: %08lx\r\n", mPageNo,
                              FOTA_UPDATE_BUFFER_FW_ADDRESS + mPageNo * kAlignmentBytes);
-                imageProcessor->mDownloader->EndDownload(CHIP_ERROR_WRITE_FAILED);
-                return;
+                return CHIP_ERROR_WRITE_FAILED;
             }
             mWriteOffset += kAlignmentBytes;
-            imageProcessor->mParams.downloadedBytes += kAlignmentBytes;
+            mParams.downloadedBytes += kAlignmentBytes;
         }
     }
 
-    imageProcessor->mDownloader->FetchNextData();
+    return CHIP_NO_ERROR;
+}
+
+CHIP_ERROR OTAImageProcessorImpl::ProcessRafaelHeader(ByteSpan & block)
+{
+    // The Rafael header directly follows the Matter header
+    if (mHeaderParser.IsInitialized() || rafaelHeaderParsed)
+    {
+        return CHIP_NO_ERROR;
+    }
+
+    size_t bytesToCopy = std::min(block.size(), kRafaelHeaderSize - rafaelHeaderOffset);
+    memcpy(&rafaelHeader[rafaelHeaderOffset], block.data(), bytesToCopy);
+    rafaelHeaderOffset = static_cast<uint8_t>(rafaelHeaderOffset + bytesToCopy);
+    block              = block.SubSpan(bytesToCopy);
+
+    if (rafaelHeaderOffset < kRafaelHeaderSize)
+    {
+        return CHIP_NO_ERROR;
+    }
+
+    uint32_t magic;
+    uint8_t version;
+    uint8_t headerSize;
+    uint8_t reserved;
+    Encoding::LittleEndian::Reader reader(rafaelHeader, kRafaelHeaderSize);
+    reader.Read32(&magic)
+        .Read8(&version)
+        .Read8(&headerSize)
+        .Read8(&imageInfo)
+        .Read8(&reserved)
+        .Read32(&signatureLen)
+        .Read32(&imageLen);
+    ReturnErrorOnFailure(reader.StatusCode());
+
+    VerifyOrReturnError(magic == kRafaelHeaderMagic, CHIP_ERROR_INVALID_FILE_IDENTIFIER);
+    VerifyOrReturnError(version == kRafaelHeaderVersion, CHIP_ERROR_VERSION_MISMATCH);
+    VerifyOrReturnError(headerSize == kRafaelHeaderSize, CHIP_ERROR_INVALID_MESSAGE_LENGTH);
+    VerifyOrReturnError(((imageInfo & FOTA_IMAGE_INFO_SIGNATURE) == 0) || (signatureLen != 0), CHIP_ERROR_INVALID_ARGUMENT);
+    VerifyOrReturnError(imageLen <= SIZE_OF_FOTA_BANK, CHIP_ERROR_BUFFER_TOO_SMALL);
+
+    ChipLogProgress(SoftwareUpdate, "Rafael image header: info 0x%02x, signature length %" PRIu32 ", image length %" PRIu32,
+                    imageInfo, signatureLen, imageLen);
+    rafaelHeaderParsed = true;
+
+    return CHIP_NO_ERROR;
 }
 
 CHIP_ERROR OTAImageProcessorImpl::ProcessHeader(ByteSpan & block)
