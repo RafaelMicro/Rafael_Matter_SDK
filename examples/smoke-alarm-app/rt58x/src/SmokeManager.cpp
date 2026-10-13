@@ -27,6 +27,7 @@
 #include "AppTask.h"
 
 #include <app/clusters/smoke-co-alarm-server/SmokeCOTestEventTriggerHandler.h>
+#include <lib/support/TypeTraits.h>
 /**********************************************************
  * Defines and Constants
  *********************************************************/
@@ -35,10 +36,10 @@ using namespace chip;
 using namespace ::chip::app::Clusters;
 using namespace ::chip::app::Clusters::SmokeCoAlarm;
 using namespace ::chip::DeviceLayer;
-constexpr EndpointId kContactEndpoint = 1;
+constexpr EndpointId kAlarmEndpoint = 1;
 
-TimerHandle_t sSmokeTimer;
-StaticTimer_t sStaticSmokeTimerStruct;
+TimerHandle_t sSelfTestTimer;
+StaticTimer_t sStaticSelfTestTimerStruct;
 TimerHandle_t sLedTimer;
 StaticTimer_t sStaticLedTimerStruct;
 
@@ -65,29 +66,29 @@ CHIP_ERROR SmokeManager::Init()
     // application owns the cluster instance and its registration with the data model provider.
     SmokeCoAlarmCluster::Config config;
     config.featureMap.Set(Feature::kSmokeAlarm).Set(Feature::kCoAlarm);
-    ReturnErrorOnFailure(SmokeCoAlarmServer::Instance().Init(kContactEndpoint, config, this));
+    ReturnErrorOnFailure(SmokeCoAlarmServer::Instance().Init(kAlarmEndpoint, config, this));
 
-    SmokeCoAlarmServer::Instance().SetSmokeState(1, AlarmStateEnum::kNormal);
-    SmokeCoAlarmServer::Instance().SetCOState(1, AlarmStateEnum::kNormal);
-    SmokeCoAlarmServer::Instance().SetTestInProgress(1, false);
-    SmokeCoAlarmServer::Instance().SetHardwareFaultAlert(1, false);
-    SmokeCoAlarmServer::Instance().SetBatteryAlert(1, AlarmStateEnum::kNormal);
-    SmokeCoAlarmServer::Instance().SetEndOfServiceAlert(1, EndOfServiceEnum::kNormal);
-    SmokeCoAlarmServer::Instance().SetInterconnectSmokeAlarm(1, AlarmStateEnum::kNormal);
-    SmokeCoAlarmServer::Instance().SetInterconnectCOAlarm(1, AlarmStateEnum::kNormal);
-    SmokeCoAlarmServer::Instance().SetExpressedStateByPriority(1, sPriorityOrder);
+    SmokeCoAlarmServer::Instance().SetSmokeState(kAlarmEndpoint, AlarmStateEnum::kNormal);
+    SmokeCoAlarmServer::Instance().SetCOState(kAlarmEndpoint, AlarmStateEnum::kNormal);
+    SmokeCoAlarmServer::Instance().SetTestInProgress(kAlarmEndpoint, false);
+    SmokeCoAlarmServer::Instance().SetHardwareFaultAlert(kAlarmEndpoint, false);
+    SmokeCoAlarmServer::Instance().SetBatteryAlert(kAlarmEndpoint, AlarmStateEnum::kNormal);
+    SmokeCoAlarmServer::Instance().SetEndOfServiceAlert(kAlarmEndpoint, EndOfServiceEnum::kNormal);
+    SmokeCoAlarmServer::Instance().SetInterconnectSmokeAlarm(kAlarmEndpoint, AlarmStateEnum::kNormal);
+    SmokeCoAlarmServer::Instance().SetInterconnectCOAlarm(kAlarmEndpoint, AlarmStateEnum::kNormal);
+    SmokeCoAlarmServer::Instance().SetExpressedStateByPriority(kAlarmEndpoint, sPriorityOrder);
 
-    sSmokeTimer =
-        xTimerCreateStatic("sensorTmr", pdMS_TO_TICKS(10000), false, nullptr, SelfTestTimerEventHandler, &sStaticSmokeTimerStruct);
-    if (sSmokeTimer == NULL)
+    sSelfTestTimer = xTimerCreateStatic("selfTestTmr", pdMS_TO_TICKS(10000), false, nullptr, SelfTestTimerEventHandler,
+                                        &sStaticSelfTestTimerStruct);
+    if (sSelfTestTimer == NULL)
     {
-        ChipLogProgress(NotSpecified, "sSmokeTimer timer create failed");
+        ChipLogProgress(NotSpecified, "sSelfTestTimer timer create failed");
         return CHIP_ERROR_NO_MEMORY;
     }
     sLedTimer = xTimerCreateStatic("ledTmr", pdMS_TO_TICKS(100), true, nullptr, AlarmLedTimerHandler, &sStaticLedTimerStruct);
     if (sLedTimer == NULL)
     {
-        ChipLogProgress(NotSpecified, "sSmokeTimer timer create failed");
+        ChipLogProgress(NotSpecified, "sLedTimer timer create failed");
         return CHIP_ERROR_NO_MEMORY;
     }
 
@@ -97,12 +98,12 @@ CHIP_ERROR SmokeManager::Init()
 void SmokeManager::StartSelfTesting()
 {
     ChipLogProgress(Zcl, "Start self-testing");
-    if (sSmokeTimer && SmokeMgr().mStartSelfTesting == false)
+    if (sSelfTestTimer && SmokeMgr().mStartSelfTesting == false)
     {
         SmokeMgr().mStartSelfTesting = true;
-        SmokeCoAlarmServer::Instance().SetTestInProgress(1, true);
-        SmokeCoAlarmServer::Instance().SetExpressedStateByPriority(1, sPriorityOrder);
-        xTimerStart(sSmokeTimer, 0);
+        SmokeCoAlarmServer::Instance().SetTestInProgress(kAlarmEndpoint, true);
+        SmokeCoAlarmServer::Instance().SetExpressedStateByPriority(kAlarmEndpoint, sPriorityOrder);
+        xTimerStart(sSelfTestTimer, 0);
     }
 }
 
@@ -116,8 +117,8 @@ void SmokeManager::SelfTestTimerEventHandler(TimerHandle_t xTimer)
     SmokeMgr().mStartSelfTesting = false;
 
     chip::DeviceLayer::PlatformMgr().LockChipStack();
-    SmokeCoAlarmServer::Instance().SetTestInProgress(1, false);
-    SmokeCoAlarmServer::Instance().SetExpressedStateByPriority(1, sPriorityOrder);
+    SmokeCoAlarmServer::Instance().SetTestInProgress(kAlarmEndpoint, false);
+    SmokeCoAlarmServer::Instance().SetExpressedStateByPriority(kAlarmEndpoint, sPriorityOrder);
     chip::DeviceLayer::PlatformMgr().UnlockChipStack();
     ChipLogProgress(Zcl, "End self-testing");
 }
@@ -144,29 +145,32 @@ void SmokeManager::ToggleSmokeState(AlarmStateEnum newAlarmState)
         break;
     }
     PlatformMgr().LockChipStack();
-    SmokeCoAlarmServer::Instance().SetSmokeState(1, mSmokeAlarmState);
-    SmokeCoAlarmServer::Instance().SetExpressedStateByPriority(1, sPriorityOrder);
+    SmokeCoAlarmServer::Instance().SetSmokeState(kAlarmEndpoint, mSmokeAlarmState);
+    SmokeCoAlarmServer::Instance().SetExpressedStateByPriority(kAlarmEndpoint, sPriorityOrder);
     PlatformMgr().UnlockChipStack();
-
-    // The code-driven cluster keeps its own attribute storage, so there is no Ember write to
-    // observe through MatterPostAttributeChangeCallback: drive the alarm LED from here.
-    HandleSmokeState(static_cast<uint8_t>(mSmokeAlarmState));
 }
 void SmokeManager::AlarmLedTimerHandler(TimerHandle_t xTimer)
 {
     hosal_gpio_pin_toggle(21);
 }
-void SmokeManager::HandleSmokeState(uint8_t SmokeAlarmState)
+void SmokeManager::OnExpressedStateChanged(ExpressedStateEnum newExpressedState)
 {
-    if (SmokeAlarmState == 0 && sLedTimer && xTimerIsTimerActive(sLedTimer))
+    ChipLogProgress(NotSpecified, "Expressed State: %u", to_underlying(newExpressedState));
+    VerifyOrReturn(sLedTimer != nullptr);
+
+    if (newExpressedState == ExpressedStateEnum::kNormal)
     {
         xTimerStop(sLedTimer, 0);
         hosal_gpio_pin_set(21);
     }
-    else if (sLedTimer && !xTimerIsTimerActive(sLedTimer))
+    else if (!xTimerIsTimerActive(sLedTimer))
     {
         xTimerStart(sLedTimer, 0);
     }
+}
+void SmokeManager::OnSmokeSensitivityLevelChanged(SensitivityEnum newSmokeSensitivityLevel)
+{
+    ChipLogProgress(NotSpecified, "Smoke Sensitivity Level: %u", to_underlying(newSmokeSensitivityLevel));
 }
 
 bool HandleSmokeCOTestEventTrigger(uint64_t eventTrigger)
@@ -178,89 +182,83 @@ bool HandleSmokeCOTestEventTrigger(uint64_t eventTrigger)
     switch (trigger)
     {
     case SmokeCOTrigger::kForceSmokeWarning:
-        SmokeCoAlarmServer::Instance().SetSmokeState(kContactEndpoint, AlarmStateEnum::kWarning);
+        SmokeCoAlarmServer::Instance().SetSmokeState(kAlarmEndpoint, AlarmStateEnum::kWarning);
         break;
     case SmokeCOTrigger::kForceSmokeCritical:
-        SmokeCoAlarmServer::Instance().SetSmokeState(kContactEndpoint, AlarmStateEnum::kCritical);
+        SmokeCoAlarmServer::Instance().SetSmokeState(kAlarmEndpoint, AlarmStateEnum::kCritical);
         break;
     case SmokeCOTrigger::kClearSmoke:
-        SmokeCoAlarmServer::Instance().SetSmokeState(kContactEndpoint, AlarmStateEnum::kNormal);
+        SmokeCoAlarmServer::Instance().SetSmokeState(kAlarmEndpoint, AlarmStateEnum::kNormal);
         break;
     case SmokeCOTrigger::kForceCOWarning:
-        SmokeCoAlarmServer::Instance().SetCOState(kContactEndpoint, AlarmStateEnum::kWarning);
+        SmokeCoAlarmServer::Instance().SetCOState(kAlarmEndpoint, AlarmStateEnum::kWarning);
         break;
     case SmokeCOTrigger::kForceCOCritical:
-        SmokeCoAlarmServer::Instance().SetCOState(kContactEndpoint, AlarmStateEnum::kCritical);
+        SmokeCoAlarmServer::Instance().SetCOState(kAlarmEndpoint, AlarmStateEnum::kCritical);
         break;
     case SmokeCOTrigger::kClearCO:
-        SmokeCoAlarmServer::Instance().SetCOState(kContactEndpoint, AlarmStateEnum::kNormal);
+        SmokeCoAlarmServer::Instance().SetCOState(kAlarmEndpoint, AlarmStateEnum::kNormal);
         break;
     case SmokeCOTrigger::kForceLowBatteryWarning:
-        SmokeCoAlarmServer::Instance().SetBatteryAlert(kContactEndpoint, AlarmStateEnum::kWarning);
+        SmokeCoAlarmServer::Instance().SetBatteryAlert(kAlarmEndpoint, AlarmStateEnum::kWarning);
         break;
     case SmokeCOTrigger::kForceLowBatteryCritical:
-        SmokeCoAlarmServer::Instance().SetBatteryAlert(kContactEndpoint, AlarmStateEnum::kCritical);
+        SmokeCoAlarmServer::Instance().SetBatteryAlert(kAlarmEndpoint, AlarmStateEnum::kCritical);
         break;
     case SmokeCOTrigger::kClearBatteryLevelLow:
-        SmokeCoAlarmServer::Instance().SetBatteryAlert(kContactEndpoint, AlarmStateEnum::kNormal);
+        SmokeCoAlarmServer::Instance().SetBatteryAlert(kAlarmEndpoint, AlarmStateEnum::kNormal);
         break;
     case SmokeCOTrigger::kForceMalfunction:
-        SmokeCoAlarmServer::Instance().SetHardwareFaultAlert(kContactEndpoint, true);
+        SmokeCoAlarmServer::Instance().SetHardwareFaultAlert(kAlarmEndpoint, true);
         break;
     case SmokeCOTrigger::kClearMalfunction:
-        SmokeCoAlarmServer::Instance().SetHardwareFaultAlert(kContactEndpoint, false);
+        SmokeCoAlarmServer::Instance().SetHardwareFaultAlert(kAlarmEndpoint, false);
         break;
     case SmokeCOTrigger::kForceEndOfLife:
-        SmokeCoAlarmServer::Instance().SetEndOfServiceAlert(kContactEndpoint, EndOfServiceEnum::kExpired);
+        SmokeCoAlarmServer::Instance().SetEndOfServiceAlert(kAlarmEndpoint, EndOfServiceEnum::kExpired);
         break;
     case SmokeCOTrigger::kClearEndOfLife:
-        SmokeCoAlarmServer::Instance().SetEndOfServiceAlert(kContactEndpoint, EndOfServiceEnum::kNormal);
+        SmokeCoAlarmServer::Instance().SetEndOfServiceAlert(kAlarmEndpoint, EndOfServiceEnum::kNormal);
         break;
     case SmokeCOTrigger::kForceSmokeInterconnect:
-        SmokeCoAlarmServer::Instance().SetInterconnectSmokeAlarm(kContactEndpoint, AlarmStateEnum::kWarning);
+        SmokeCoAlarmServer::Instance().SetInterconnectSmokeAlarm(kAlarmEndpoint, AlarmStateEnum::kWarning);
         break;
     case SmokeCOTrigger::kClearSmokeInterconnect:
-        SmokeCoAlarmServer::Instance().SetInterconnectSmokeAlarm(kContactEndpoint, AlarmStateEnum::kNormal);
+        SmokeCoAlarmServer::Instance().SetInterconnectSmokeAlarm(kAlarmEndpoint, AlarmStateEnum::kNormal);
         break;
     case SmokeCOTrigger::kForceCOInterconnect:
-        SmokeCoAlarmServer::Instance().SetInterconnectCOAlarm(kContactEndpoint, AlarmStateEnum::kWarning);
+        SmokeCoAlarmServer::Instance().SetInterconnectCOAlarm(kAlarmEndpoint, AlarmStateEnum::kWarning);
         break;
     case SmokeCOTrigger::kClearCOInterconnect:
-        SmokeCoAlarmServer::Instance().SetInterconnectCOAlarm(kContactEndpoint, AlarmStateEnum::kNormal);
+        SmokeCoAlarmServer::Instance().SetInterconnectCOAlarm(kAlarmEndpoint, AlarmStateEnum::kNormal);
         break;
     case SmokeCOTrigger::kForceSmokeContaminationHigh:
-        SmokeCoAlarmServer::Instance().SetContaminationState(kContactEndpoint, ContaminationStateEnum::kCritical);
+        SmokeCoAlarmServer::Instance().SetContaminationState(kAlarmEndpoint, ContaminationStateEnum::kCritical);
         break;
     case SmokeCOTrigger::kForceSmokeContaminationLow:
-        SmokeCoAlarmServer::Instance().SetContaminationState(kContactEndpoint, ContaminationStateEnum::kLow);
+        SmokeCoAlarmServer::Instance().SetContaminationState(kAlarmEndpoint, ContaminationStateEnum::kLow);
         break;
     case SmokeCOTrigger::kClearContamination:
-        SmokeCoAlarmServer::Instance().SetContaminationState(kContactEndpoint, ContaminationStateEnum::kNormal);
+        SmokeCoAlarmServer::Instance().SetContaminationState(kAlarmEndpoint, ContaminationStateEnum::kNormal);
         break;
     case SmokeCOTrigger::kForceSmokeSensitivityHigh:
-        SmokeCoAlarmServer::Instance().SetSmokeSensitivityLevel(kContactEndpoint, SensitivityEnum::kHigh);
+        SmokeCoAlarmServer::Instance().SetSmokeSensitivityLevel(kAlarmEndpoint, SensitivityEnum::kHigh);
         break;
     case SmokeCOTrigger::kForceSmokeSensitivityLow:
-        SmokeCoAlarmServer::Instance().SetSmokeSensitivityLevel(kContactEndpoint, SensitivityEnum::kLow);
+        SmokeCoAlarmServer::Instance().SetSmokeSensitivityLevel(kAlarmEndpoint, SensitivityEnum::kLow);
         break;
     case SmokeCOTrigger::kClearSensitivity:
-        SmokeCoAlarmServer::Instance().SetSmokeSensitivityLevel(kContactEndpoint, SensitivityEnum::kStandard);
+        SmokeCoAlarmServer::Instance().SetSmokeSensitivityLevel(kAlarmEndpoint, SensitivityEnum::kStandard);
         break;
     case SmokeCOTrigger::kForceSilence:
-        SmokeCoAlarmServer::Instance().SetDeviceMuted(kContactEndpoint, MuteStateEnum::kMuted);
+        SmokeCoAlarmServer::Instance().SetDeviceMuted(kAlarmEndpoint, MuteStateEnum::kMuted);
         break;
     case SmokeCOTrigger::kClearSilence:
-        SmokeCoAlarmServer::Instance().SetDeviceMuted(kContactEndpoint, MuteStateEnum::kNotMuted);
+        SmokeCoAlarmServer::Instance().SetDeviceMuted(kAlarmEndpoint, MuteStateEnum::kNotMuted);
         break;
     default:
         return false;
     }
-    SmokeCoAlarmServer::Instance().SetExpressedStateByPriority(kContactEndpoint, sPriorityOrder);
-
-    AlarmStateEnum smokeState = AlarmStateEnum::kNormal;
-    if (SmokeCoAlarmServer::Instance().GetSmokeState(kContactEndpoint, smokeState))
-    {
-        SmokeMgr().HandleSmokeState(static_cast<uint8_t>(smokeState));
-    }
+    SmokeCoAlarmServer::Instance().SetExpressedStateByPriority(kAlarmEndpoint, sPriorityOrder);
     return true;
 }

@@ -392,9 +392,22 @@ Status PushAvStreamTransportServerLogic::ValidateIncomingTransportOptions(
         transportOptions.streamUsage != StreamUsageEnum::kUnknownEnumValue, Status::ConstraintError,
         ChipLogError(Zcl, "Transport Options verification from command data[ep=%d]: Invalid streamUsage ", mEndpointId));
 
-    // Check for video stream name length constraints
+    // Check for video stream list count constraint (spec: max 16)
     if (transportOptions.videoStreams.HasValue())
     {
+        size_t vsCount   = 0;
+        CHIP_ERROR vsErr = transportOptions.videoStreams.Value().ComputeSize(&vsCount);
+        VerifyOrReturnValue(vsErr == CHIP_NO_ERROR, Status::ConstraintError,
+                            ChipLogError(Zcl,
+                                         "Transport Options verification from command data[ep=%d]: VideoStreams list TLV "
+                                         "validation failed: %" CHIP_ERROR_FORMAT,
+                                         mEndpointId, vsErr.Format()));
+        VerifyOrReturnValue(vsCount <= kMaxVideoStreams, Status::ConstraintError,
+                            ChipLogError(Zcl,
+                                         "Transport Options verification from command data[ep=%d]: VideoStreams count %u "
+                                         "exceeds max %u",
+                                         mEndpointId, static_cast<unsigned>(vsCount), static_cast<unsigned>(kMaxVideoStreams)));
+
         for (auto iter = transportOptions.videoStreams.Value().begin(); iter.Next();)
         {
             auto streamName = iter.GetValue().videoStreamName;
@@ -407,9 +420,22 @@ Status PushAvStreamTransportServerLogic::ValidateIncomingTransportOptions(
         }
     }
 
-    // Check for audio stream name length constraints
+    // Check for audio stream list count constraint (spec: max 16)
     if (transportOptions.audioStreams.HasValue())
     {
+        size_t asCount   = 0;
+        CHIP_ERROR asErr = transportOptions.audioStreams.Value().ComputeSize(&asCount);
+        VerifyOrReturnValue(asErr == CHIP_NO_ERROR, Status::ConstraintError,
+                            ChipLogError(Zcl,
+                                         "Transport Options verification from command data[ep=%d]: AudioStreams list TLV "
+                                         "validation failed: %" CHIP_ERROR_FORMAT,
+                                         mEndpointId, asErr.Format()));
+        VerifyOrReturnValue(asCount <= kMaxAudioStreams, Status::ConstraintError,
+                            ChipLogError(Zcl,
+                                         "Transport Options verification from command data[ep=%d]: AudioStreams count %u "
+                                         "exceeds max %u",
+                                         mEndpointId, static_cast<unsigned>(asCount), static_cast<unsigned>(kMaxAudioStreams)));
+
         for (auto iter = transportOptions.audioStreams.Value().begin(); iter.Next();)
         {
             auto streamName = iter.GetValue().audioStreamName;
@@ -791,7 +817,8 @@ std::optional<DataModel::ActionReturnStatus> PushAvStreamTransportServerLogic::V
             newVideoStream.videoStreamID   = finalVideoStreamID;
 
             // Add to storage and update the list
-            transportOptionsPtr->AddVideoStream(newVideoStream);
+            VerifyOrReturnValue(transportOptionsPtr->AddVideoStream(newVideoStream) == CHIP_NO_ERROR, Status::Failure,
+                                ChipLogError(Zcl, "HandleAllocatePushTransport[ep=%d]: Failed to add video stream", mEndpointId));
         }
 
         if (transportOptions.audioStreamID.HasValue())
@@ -833,7 +860,8 @@ std::optional<DataModel::ActionReturnStatus> PushAvStreamTransportServerLogic::V
             newAudioStream.audioStreamID   = finalAudioStreamID;
 
             // Add to storage and update the list
-            transportOptionsPtr->AddAudioStream(newAudioStream);
+            VerifyOrReturnValue(transportOptionsPtr->AddAudioStream(newAudioStream) == CHIP_NO_ERROR, Status::Failure,
+                                ChipLogError(Zcl, "HandleAllocatePushTransport[ep=%d]: Failed to add audio stream", mEndpointId));
         }
     }
 
@@ -888,6 +916,13 @@ PushAvStreamTransportServerLogic::HandleAllocatePushTransport(CommandHandler & h
         CHIP_ERROR tlsEndpointValidityStatus = mTLSClientManagementDelegate->FindProvisionedEndpointByID(
             kRootEndpointId, handler.GetAccessingFabricIndex(), commandData.transportOptions.TLSEndpointID,
             [&](auto & TLSEndpoint) -> CHIP_ERROR {
+                // The spec requires a push transport's TLS endpoint to carry a non-null ccdid; a null one means no
+                // client certificate is associated with the endpoint, which the caller reports as an invalid TLS endpoint.
+                VerifyOrReturnError(!TLSEndpoint.ccdid.IsNull(), CHIP_ERROR_INVALID_ARGUMENT,
+                                    ChipLogError(Zcl,
+                                                 "HandleAllocatePushTransport[ep=%d]: TLS endpoint %u has no client certificate",
+                                                 mEndpointId, commandData.transportOptions.TLSEndpointID));
+
                 // Use heap allocation for large certificate buffers to reduce stack usage
                 auto rootCertBuffer   = std::make_unique<PersistenceBuffer<CHIP_CONFIG_TLS_PERSISTED_ROOT_CERT_BYTES>>();
                 auto clientCertBuffer = std::make_unique<PersistenceBuffer<CHIP_CONFIG_TLS_PERSISTED_CLIENT_CERT_BYTES>>();

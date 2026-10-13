@@ -52,7 +52,7 @@ is why the tables below record *what* each change is, not just the filename.
 | Path | Content |
 | ---- | ------- |
 | `repo/` | Rafael SDK submodule (`github.com/RafaelMicro/components`): `components/platform/soc/{rt582,rt584}`, `components/hosal`, `components/network` (RT569 RF/FW), FreeRTOS under `repo/third_party/freertos/` |
-| `rt58x_sdk.gni` | `rt58x_sdk()` build template; args: `rt58x_sdk_root`, `use_static_sdk_lib`, `use_rafael_thread_lib`, per-board include dirs |
+| `rt58x_sdk.gni` | `rt58x_sdk()` build template; args: `rafael_board` (target chip, set by `gn_rt58x_example.sh`), `rt58x_sdk_root`, `use_static_sdk_lib`, `use_rafael_thread_lib`, per-board include dirs |
 | `rt58x_arm.gni` | ARM toolchain flags per board (arch/cpu/fpu) |
 | `rt58x_executable.gni` | `rt58x_executable()` template → `.bin` via objcopy |
 | `BUILD.gn` | mbedtls target (`mbedtls_rt58x_config`), syscalls stub, SDK group |
@@ -92,17 +92,16 @@ entries here whenever an upstream file is modified in place.)
 | File | Rafael change |
 | ---- | ------------- |
 | `src/app/clusters/level-control/codegen/level-control.cpp` | `scheduleTimerCallbackMs()`: added a `delayMs == 0` early path that invokes `timerCallback()` synchronously instead of going through `SystemLayer().StartTimer()` |
-| `src/app/clusters/color-control-server/color-control-server.cpp` | `ColorControlServer::scheduleTimerCallbackMs()`: same `delayMs == 0` synchronous-callback handling |
+| `src/app/clusters/color-control-server/codegen/color-control-server.cpp` | `ColorControlServer::scheduleTimerCallbackMs()`: same `delayMs == 0` synchronous-callback handling |
 | `examples/lighting-app/lighting-common/src/ColorFormat.cpp` (identical copy: `examples/lighting-zigbee/lighting-common/src/ColorFormat.cpp` — keep both in sync) | Fixes over upstream: `XYToRgb()` guards `currentY == 0` (upstream divides by zero → NaN passes through `clamp`, and NaN→uint8 cast is UB) and divides by 65536 per spec instead of 65535; `CTToRgb()` guards `ctMireds == 0` and clamps to 0xFEFF; `HsvToRgb()` rewritten for Matter's 0–254 value range (upstream assumed 0–255 with `/43` and `>>8` truncation) using `DivRound` rounding and `uint16_t` intermediates; `rgb` structs zero-initialized |
 
 ### Platform registration (build fails loudly if clobbered — still must be re-applied)
 
 | File | Rafael change |
 | ---- | ------------- |
-| `src/platform/device.gni` | `rafael_board` arg; `rt58x` added to the platform allowlist and `_chip_device_layer = "RT58x"` mapping |
+| `src/platform/device.gni` | `rt58x` added to the platform allowlist and `_chip_device_layer = "RT58x"` mapping |
 | `src/platform/BUILD.gn` | `rt58x` branches: `CHIP_DEVICE_LAYER_TARGET=RT58x` define, `RT58x` in the device-layer dirs list, `_platform_target = "RT58x"` |
 | `src/platform/logging/BUILD.gn` | `rt58x` branch for the platform logging backend |
 | `src/system/BUILD.gn` | Imports `//build_overrides/rt58x_sdk.gni`; adds `${rt58x_sdk_build_root}:rt58x_sdk` to `public_deps` for `rt58x` |
 | `src/lib/shell/BUILD.gn` | `rt58x` branch adding `MainLoopRT58x.cpp` and `streamer_rt58x.cpp` |
 | `.gitmodules` | Registers Rafael submodules: `third_party/openthread/openthread-rafael`, `third_party/rafael/repo/components` |
-| `src/app/clusters/thread-network-diagnostics-server/DirectThreadNetworkDiagnosticsProvider.cpp` | 7 calls qualified from `Internal::MapOpenThreadError` to `DeviceLayer::Internal::MapOpenThreadError`. The file sits in `namespace chip::app::Clusters::ThreadNetworkDiagnostics` and relied on `using namespace chip::DeviceLayer;` to resolve the unqualified name; the precompiled header (`third_party/rafael/pch/`) makes `chip::app::Internal` visible first, which hides it. Any upstream file that uses `Internal::` unqualified inside `chip::app` will need the same fix |

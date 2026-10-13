@@ -34,8 +34,8 @@ using namespace chip;
 using namespace ::chip::DeviceLayer;
 
 constexpr chip::EndpointId kTemperatureMeasurementEndpoint = 1;
-constexpr uint16_t kTempTImerPeriodMs                      = 60000; // 60s timer period
-constexpr uint16_t kMinTemperatureDelta                    = 50;    // 0.5 degree Celcius
+constexpr uint16_t kTempTimerPeriodMs                      = 60000; // 60s timer period
+constexpr uint16_t kMinTemperatureDelta                    = 50;    // 0.5 degree Celsius
 
 namespace TemperatureAttr = chip::app::Clusters::TemperatureMeasurement::Attributes;
 /**********************************************************
@@ -52,7 +52,7 @@ static int16_t mSimulatedTemp[] = { 2300, 2400, 2800, 2550, 2200, 2125, 2100, 26
 CHIP_ERROR TemperatureManager::Init()
 {
     // Create FreeRTOS sw timer for temp sensor timer.
-    sTempTimer = xTimerCreateStatic("sensorTmr", pdMS_TO_TICKS(kTempTImerPeriodMs), true, nullptr, TempTimerEventHandler,
+    sTempTimer = xTimerCreateStatic("sensorTmr", pdMS_TO_TICKS(kTempTimerPeriodMs), true, nullptr, TempTimerEventHandler,
                                     &sStaticTempTimerStruct);
 
     if (sTempTimer == NULL)

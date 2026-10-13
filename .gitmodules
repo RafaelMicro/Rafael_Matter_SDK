@@ -49,3 +49,7 @@
 [submodule "third_party/rafael/repo/components"]
 	path = third_party/rafael/repo/components
 	url = https://github.com/RafaelMicro/components.git
+[submodule "third_party/uriparser/repo"]
+	path = third_party/uriparser/repo
+	url = https://github.com/uriparser/uriparser.git
+	branch = uriparser-1.0.0

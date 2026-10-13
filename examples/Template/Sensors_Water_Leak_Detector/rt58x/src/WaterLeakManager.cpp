@@ -26,13 +26,13 @@ using namespace chip;
 using namespace chip::DeviceLayer;
 using namespace chip::app::Clusters;
 
-constexpr EndpointId kContactEndpoint = 1;
+constexpr EndpointId kWaterLeakEndpoint = 1;
 
 WaterLeakManager WaterLeakManager::sWaterLeakMgr;
 
 CHIP_ERROR WaterLeakManager::Init()
 {
-    auto booleanState = BooleanState::FindClusterOnEndpoint(kContactEndpoint);
+    auto booleanState = BooleanState::FindClusterOnEndpoint(kWaterLeakEndpoint);
     // Default resting state is "no leak" (StateValue = false); pressing pin1 reports a leak.
     ChipLogProgress(NotSpecified, "Water Leak State: No leak");
     booleanState->SetStateValue(false);
@@ -44,7 +44,7 @@ void WaterLeakManager::AttributeChangeHandler(EndpointId endpointId, AttributeId
 
 void WaterLeakManager::ToggleStateValue(bool val)
 {
-    auto booleanState = BooleanState::FindClusterOnEndpoint(kContactEndpoint);
+    auto booleanState = BooleanState::FindClusterOnEndpoint(kWaterLeakEndpoint);
     if (booleanState != nullptr)
     {
         if (val)
