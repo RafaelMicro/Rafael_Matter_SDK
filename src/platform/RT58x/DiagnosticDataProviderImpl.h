@@ -44,11 +44,11 @@ public:
     CHIP_ERROR GetBootReason(BootReasonType & bootReason) override;
     CHIP_ERROR GetThreadMetrics(ThreadMetrics ** threadMetricsOut) override;
     void ReleaseThreadMetrics(ThreadMetrics * threadMetrics) override;
-    bool SupportsWatermarks() { return true; };
+    bool SupportsWatermarks() override { return true; }
     CHIP_ERROR GetCurrentHeapHighWatermark(uint64_t & currentHeapHighWatermark) override;
     CHIP_ERROR ResetWatermarks(void) override;
 
-    CHIP_ERROR GetNetworkInterfaces(NetworkInterface ** netifpp);
+    CHIP_ERROR GetNetworkInterfaces(NetworkInterface ** netifpp) override;
     void ReleaseNetworkInterfaces(NetworkInterface * netifp) override;
 };
 

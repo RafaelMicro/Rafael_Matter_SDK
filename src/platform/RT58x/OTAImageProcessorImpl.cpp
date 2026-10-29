@@ -292,12 +292,6 @@ void OTAImageProcessorImpl::HandleApply(intptr_t context)
 
     chip::DeviceLayer::ConfigurationMgr().StoreBootReason(5); // kSoftwareUpdateCompleted
 
-    OTARequestorInterface * requestor = chip::GetRequestorInstance();
-    if (requestor != nullptr)
-    {
-        requestor->NotifyUpdateApplied();
-    }
-
     memcpy(&t_bootloader_ota_info, (uint8_t *) FOTA_UPDATE_BANK_INFO_ADDRESS, sizeof(t_bootloader_ota_info));
 
     t_bootloader_ota_info.fotabank_ready     = FOTA_IMAGE_READY;

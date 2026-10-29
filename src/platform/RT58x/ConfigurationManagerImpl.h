@@ -67,6 +67,9 @@ private:
     CHIP_ERROR WriteConfigValueStr(Key key, const char * str, size_t strLen) override;
     CHIP_ERROR WriteConfigValueBin(Key key, const uint8_t * data, size_t dataLen) override;
     void RunConfigUnitTest(void) override;
+    void DetermineBootReason();
+
+    uint32_t mBootReason = 0;
 };
 inline CHIP_ERROR ConfigurationManagerImpl::GetPrimaryWiFiMACAddress(uint8_t * buf)
 {

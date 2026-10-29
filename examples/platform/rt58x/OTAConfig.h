@@ -22,6 +22,7 @@
 #include <app/clusters/ota-requestor/DefaultOTARequestor.h>
 #include <app/clusters/ota-requestor/DefaultOTARequestorDriver.h>
 #include <app/clusters/ota-requestor/DefaultOTARequestorStorage.h>
+#include <platform/CHIPDeviceLayer.h>
 #include <platform/RT58x/OTAImageProcessorImpl.h>
 
 class OTAConfig
@@ -29,6 +30,13 @@ class OTAConfig
 public:
     OTAConfig(){};
 
+    // Defers the OTA requestor initialization until DNS-SD is ready, so that the
+    // NotifyUpdateApplied sent on the first boot of a new image can reach the provider.
     static void Init();
     static constexpr uint32_t kInitOTARequestorDelaySec = 3;
+
+private:
+    static void OnPlatformEvent(const chip::DeviceLayer::ChipDeviceEvent * event, intptr_t arg);
+    static void InitOTARequestorHandler(chip::System::Layer * systemLayer, void * appState);
+    static void InitOTARequestor();
 };
