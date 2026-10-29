@@ -286,6 +286,7 @@ void AppTask::ChipEventHandler(const ChipDeviceEvent * aEvent, intptr_t /* arg *
         log_info("[Matter] Receive BLE message:");
         log_info_hexdump("", aEvent->Platform.TRSPData.data, aEvent->Platform.TRSPData.len);
         BLEMgrImpl().BLESendMessage(aEvent->Platform.TRSPData.data, aEvent->Platform.TRSPData.len);
+        vPortFree(aEvent->Platform.TRSPData.data);
         break;
 #endif
     default:

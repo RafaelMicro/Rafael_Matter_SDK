@@ -17,17 +17,23 @@
 #define RAF_DEVICE_NUM 1
 #define RAF_CLUSTER_NUM_EP1 3
 
-static uint32_t device_type_list[RAF_DEVICE_NUM]   = { CHIP_DEVICE_CONFIG_DEVICE_TYPE };
-static uint16_t endpoint_id_list[RAF_DEVICE_NUM]   = { 1 };
-static uint8_t cluster_number_list[RAF_DEVICE_NUM] = { RAF_CLUSTER_NUM_EP1 };
+inline constexpr uint32_t device_type_list[RAF_DEVICE_NUM]   = { CHIP_DEVICE_CONFIG_DEVICE_TYPE };
+inline constexpr uint16_t endpoint_id_list[RAF_DEVICE_NUM]   = { 1 };
+inline constexpr uint8_t cluster_number_list[RAF_DEVICE_NUM] = { RAF_CLUSTER_NUM_EP1 };
 
-static uint32_t cluster_list_ep1[RAF_CLUSTER_NUM_EP1] = { 0x0003, 0x0006, 0x0008 };
+inline constexpr uint32_t cluster_list_ep1[RAF_CLUSTER_NUM_EP1] = { 0x0003, 0x0006, 0x0008 };
 
 /**********************************************************
  * Define
  *********************************************************/
 #define RAF_STATUS_SUCCESS 0
 #define RAF_STATUS_FAIL 1
+
+/* Every BLE message starts with a command byte and a payload length byte. */
+#define RAF_MSG_HEADER_LEN 2
+#define RAF_CUSTOM_COMMAND_MAX_LEN 64
+/* The custom command response echoes the whole payload, so it is the largest response. */
+#define RAF_RESP_BUF_SIZE (RAF_MSG_HEADER_LEN + RAF_CUSTOM_COMMAND_MAX_LEN)
 
 class RafMultiControlManager
 {
@@ -53,7 +59,7 @@ public:
         ReadAttributeResp           = 0xA0,
         WriteAttributeResp          = 0xA1,
         ReportAttribute             = 0xA2,
-    } ble_cmd;
+    };
     static void HandleBleMessage(const chip::DeviceLayer::ChipDeviceEvent * aEvent);
     static void SendCommandToBle(intptr_t arg);
     static void ReportOnoff(uint16_t ep, bool onoff);

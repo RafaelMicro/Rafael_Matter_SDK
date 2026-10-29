@@ -466,6 +466,12 @@ void BLEManagerImpl::ble_svcs_matter_evt_handler(void * p_matter_evt_param)
         case BLESERVICE_MATTER_CLIENT_TX_BUFFER_WRITE_EVENT: {
             System::PacketBufferHandle buf;
             buf = System::PacketBufferHandle::New(p_param->length);
+            if (buf.IsNull())
+            {
+                ChipLogError(DeviceLayer, "Failed to allocate buffer for CHIPoBLE write (len %u)",
+                             static_cast<unsigned>(p_param->length));
+                break;
+            }
             memcpy(buf->Start(), p_param->data, p_param->length);
             buf->SetDataLength(p_param->length);
             // ChipLogDetail(DeviceLayer,"Write request/command received for CHIPoBLE RX characteristic (len

@@ -15,12 +15,24 @@ RafMultiControlManager RafMultiControlManager::sRafMultiManager;
 
 void RafMultiControlManager::HandleBleMessage(const ChipDeviceEvent * aEvent)
 {
-    uint8_t cmd_type     = aEvent->Platform.TRSPData.data[0];
-    uint8_t buf_len      = 0;
-    uint8_t resp_buf[32] = { 0 };
+    uint8_t * data                      = aEvent->Platform.TRSPData.data;
+    uint8_t buf_len                     = 0;
+    uint8_t resp_buf[RAF_RESP_BUF_SIZE] = { 0 };
 
     // ChipLogProgress(NotSpecified, "Receive ble command:\n");
     // log_hexdump_out("  ", 16, aEvent->Platform.TRSPData, aEvent->TRSPData.len);
+    if (data == nullptr || aEvent->Platform.TRSPData.len < RAF_MSG_HEADER_LEN ||
+        data[1] > aEvent->Platform.TRSPData.len - RAF_MSG_HEADER_LEN)
+    {
+        ChipLogError(NotSpecified, "Drop malformed BLE command (len %u)", static_cast<unsigned>(aEvent->Platform.TRSPData.len));
+        if (data)
+        {
+            chip::Platform::MemoryFree(data);
+        }
+        return;
+    }
+
+    uint8_t cmd_type = data[0];
 
     switch (cmd_type)
     {
@@ -139,6 +151,8 @@ uint8_t RafMultiControlManager::HandleReadFirmwareInformation(const ChipDeviceEv
     uint8_t len      = aEvent->Platform.TRSPData.data[1];
     uint8_t * value  = &aEvent->Platform.TRSPData.data[2];
     uint8_t buf_len  = 0;
+    static_assert(RAF_MSG_HEADER_LEN + 1 + sizeof(CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION_STRING) - 1 <= RAF_RESP_BUF_SIZE,
+                  "Software version string does not fit in the BLE response");
     if (len == 1 && value[0] == 0)
     {
         // buf_len = 7;
@@ -163,7 +177,7 @@ uint8_t RafMultiControlManager::HandleReadDeviceNumber(const ChipDeviceEvent * a
     uint8_t len          = aEvent->Platform.TRSPData.data[1];
     uint8_t * value      = &aEvent->Platform.TRSPData.data[2];
     uint8_t buf_len      = 0;
-    uint8_t device_index = value[0];
+    uint8_t device_index = (len > 0) ? value[0] : 0;
     if (len == 1 && device_index == 0)
     {
         buf[buf_len++] = ReadDeviceNumberResp;
@@ -179,7 +193,7 @@ uint8_t RafMultiControlManager::HandleReadDeviceType(const ChipDeviceEvent * aEv
     uint8_t len          = aEvent->Platform.TRSPData.data[1];
     uint8_t * value      = &aEvent->Platform.TRSPData.data[2];
     uint8_t buf_len      = 0;
-    uint8_t device_index = value[0];
+    uint8_t device_index = (len > 0) ? value[0] : 0;
     if (len == 1 && device_index < RAF_DEVICE_NUM)
     {
         device_type_resp.len         = 8;
@@ -204,7 +218,7 @@ uint8_t RafMultiControlManager::HandleReadClusterNumber(const ChipDeviceEvent * 
     uint8_t len          = aEvent->Platform.TRSPData.data[1];
     uint8_t * value      = &aEvent->Platform.TRSPData.data[2];
     uint8_t buf_len      = 0;
-    uint8_t device_index = value[0];
+    uint8_t device_index = (len > 0) ? value[0] : 0;
     if (len == 1 && device_index < RAF_DEVICE_NUM)
     {
         uint8_t cluster_number = cluster_number_list[device_index];
@@ -230,11 +244,11 @@ uint8_t RafMultiControlManager::HandleReadClusterId(const ChipDeviceEvent * aEve
     uint8_t cmd_type     = aEvent->Platform.TRSPData.data[0];
     uint8_t len          = aEvent->Platform.TRSPData.data[1];
     uint8_t * value      = &aEvent->Platform.TRSPData.data[2];
-    uint8_t device_index = value[0];
-    if (len == 2 && device_index < RAF_DEVICE_NUM)
+    uint8_t device_index = (len > 0) ? value[0] : 0;
+    if (len == 2 && device_index < RAF_DEVICE_NUM && value[1] < cluster_number_list[device_index])
     {
         uint8_t cluster_id_index = value[1];
-        uint32_t cluster_id;
+        uint32_t cluster_id      = 0;
         if (device_index == 0)
         {
             cluster_id = cluster_list_ep1[cluster_id_index];
@@ -275,9 +289,9 @@ uint8_t RafMultiControlManager::HandleCustomCommand(const ChipDeviceEvent * aEve
     uint8_t cmd_type = aEvent->Platform.TRSPData.data[0];
     uint8_t len      = aEvent->Platform.TRSPData.data[1];
     uint8_t * value  = &aEvent->Platform.TRSPData.data[2];
-    uint8_t command[64];
+    uint8_t command[RAF_CUSTOM_COMMAND_MAX_LEN + 1];
     uint8_t buf_len = 0;
-    if (len > 0 && len <= 64)
+    if (len > 0 && len <= RAF_CUSTOM_COMMAND_MAX_LEN)
     {
         memcpy(command, value, len);
         command[len] = '\0';
@@ -358,7 +372,14 @@ uint8_t RafMultiControlManager::HandleWriteAttribute(const ChipDeviceEvent * aEv
         {
             uint8_t level = value[10];
             status        = OnOffServer::Instance().setOnOffValue(write_attr_resp.ep, (level > 1), false);
-            status        = Clusters::LevelControl::Attributes::CurrentLevel::Set(write_attr_resp.ep, (level > 1) ? level : 1);
+            if (status == Status::Success)
+            {
+                status = Clusters::LevelControl::Attributes::CurrentLevel::Set(write_attr_resp.ep, (level > 1) ? level : 1);
+            }
+            else
+            {
+                ChipLogError(NotSpecified, "Failed to set OnOff for level write: 0x%02x", static_cast<unsigned>(status));
+            }
             if (status == Status::Success)
             {
                 write_attr_resp.cmd    = WriteAttributeResp;
