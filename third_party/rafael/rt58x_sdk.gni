@@ -163,7 +163,13 @@ template("rt58x_sdk") {
                            [ rafael_board ],
                            "list lines")
 
-    defines +=  [ "RAFAEL_SDK_VER=\"1.5.1.0\"",
+    # Get Rafael SDK version (FULL_VERSION in components/VERSION)
+    _sdk_ver = filter_include(read_file("${rt58x_sdk_root}/components/VERSION", "list lines"),
+                              [ "FULL_VERSION=*" ])
+    assert(_sdk_ver != [], "FULL_VERSION not found in components/VERSION")
+    _sdk_ver = string_replace(_sdk_ver[0], "FULL_VERSION=", "")
+
+    defines +=  [ "RAFAEL_SDK_VER=\"${_sdk_ver}\"",
                   "BUILD_HASH_INFO=0x${git_hash}",
                   "CONFIG_BUILD_PROJECT=\"matter-app\""]
     defines += _fw_info

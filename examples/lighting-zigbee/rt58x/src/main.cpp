@@ -25,6 +25,7 @@
 #include "init_rt58x_platform.h"
 #include "timers.h"
 #include <DeviceInfoProviderImpl.h>
+#include <app/SpecificationDefinedRevisions.h>
 #include <crypto/CHIPCryptoPAL.h>
 #include <lib/support/CHIPPlatformMemory.h>
 
@@ -82,8 +83,13 @@ int main(void)
         }
 
         ChipLogProgress(NotSpecified, "==================================================");
-        ChipLogProgress(NotSpecified, "Rafael-Light-example(Matter 1.5) starting Version %d",
-                        CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION);
+        ChipLogProgress(NotSpecified, " Rafael Lighting Zigbee App");
+        ChipLogProgress(NotSpecified, "  SW version : %s (%" PRIu32 ")", CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION_STRING,
+                        static_cast<uint32_t>(CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION));
+        ChipLogProgress(NotSpecified, "  Matter SDK : %" PRIu32 ".%" PRIu32 ".%" PRIu32,
+                        (Revision::kSpecificationVersion >> 24) & 0xFF, (Revision::kSpecificationVersion >> 16) & 0xFF,
+                        (Revision::kSpecificationVersion >> 8) & 0xFF);
+        ChipLogProgress(NotSpecified, "  Rafael SDK : %s", RAFAEL_SDK_VER);
         ChipLogProgress(NotSpecified, "==================================================");
 
         err = PlatformMgr().InitChipStack();

@@ -298,8 +298,6 @@ CHIP_ERROR AppTask::Init()
 {
     RafaelCommissioningTiming::MarkBootStart();
     CHIP_ERROR err;
-    ChipLogProgress(NotSpecified, "Current Software Version: %s", CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION_STRING);
-
     MatterFotaInit();
     MatterNetworkInit();
 
