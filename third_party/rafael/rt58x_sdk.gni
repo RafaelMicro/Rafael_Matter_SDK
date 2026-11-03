@@ -123,6 +123,7 @@ template("rt58x_sdk") {
       "${rt58x_sdk_root}/components/utility/log",
       "${rt58x_sdk_root}/components/utility/cli/Inc",
       "${rt58x_sdk_root}/components/utility/dump_boot_info/Inc",
+      "${rt58x_sdk_root}/components/utility/Version_Information",
       # RF Include
       "${rt58x_sdk_root}/components/network/lmac15p4/Inc/",
       "${rt58x_sdk_root}/components/network/ruci/include/",
@@ -501,6 +502,8 @@ template("rt58x_sdk") {
       "${rt58x_sdk_root}/components/utility/utility/util_queue.c",
       "${rt58x_sdk_root}/components/utility/utility/util_string.c",
       "${rt58x_sdk_root}/components/utility/dump_boot_info/Src/dump_boot_info.c",
+      "${rt58x_sdk_root}/components/utility/Version_Information/lib_version_info.c",
+      "${rt58x_sdk_root}/components/utility/Version_Information/version_info.c",
       # BLE source
       "${chip_root}/third_party/rafael/BLE_App_Profile/ble_profile_app.c",
       "${chip_root}/third_party/rafael/BLE_App_Profile/ble_profile_def.c",

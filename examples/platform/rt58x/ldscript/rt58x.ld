@@ -1,4 +1,3 @@
-
 /* Linker script to configure memory regions.
  * Need modifying for a specific board.
  *   FLASH.ORIGIN: starting address of flash
@@ -11,14 +10,21 @@
 GROUP(libgcc.a libc.a libm.a libnosys.a)
 
 
-__STACK_SIZE = DEFINED(__STACK_SIZE) ? __STACK_SIZE : 2K;
+__STACK_SIZE = DEFINED(__STACK_SIZE) ? __STACK_SIZE : 3K;
 
 MEMORY
 {
-	/* LMA regions MA_BOOT	(rx) : ORIGIN = 0x00000000, LENGTH = 32K*/
+    /**
+    * 2MB Flash Layout (2048KB) 
+    * 0x00000000 - 0x00007FFF : Bootloader      (32KB)
+    * 0x00010000 - 0x001EFFFF : App Code        (1952KB)
+    * 0x001F0000 - 0x001FDFFF : User Data       (56KB)
+    * 0x001FE000 - 0x001FFFFF : Cal / MP Sector (8KB)
+    **/
+
 	LMA_BOOT	(rx) : ORIGIN = 0x00000000, LENGTH = 32K
-	LMA_CORE	(rx) : ORIGIN = 0x00008000, LENGTH = 1180K
-	LMA_USER	(rx) : ORIGIN = 0x001F0000, LENGTH = 16K
+	LMA_CORE	(rx) : ORIGIN = 0x00008000, LENGTH = 1952K
+	LMA_USER	(rx) : ORIGIN = 0x001F0000, LENGTH = 56K
 	LMA_MP		(rx) : ORIGIN = 0x001FE000, LENGTH = 8K
 
 	/* VMA regions */
@@ -59,6 +65,7 @@ SECTIONS
 	.text :
 	{
 		KEEP(*(.isr_vector))
+		KEEP(*(.build_info))	
 		*(.text*)
 
 		KEEP(*(.init))
