@@ -41,8 +41,6 @@ CHIP_ERROR ContactManager::Init()
     return CHIP_NO_ERROR;
 }
 
-void ContactManager::AttributeChangeHandler(EndpointId endpointId, AttributeId attributeId, uint8_t * value, uint16_t size) {}
-
 void ContactManager::ToggleStateValue(bool val)
 {
     auto booleanState = BooleanState::FindClusterOnEndpoint(kContactEndpoint);

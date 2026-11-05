@@ -70,8 +70,6 @@ CHIP_ERROR HumidityManager::Init()
     return CHIP_NO_ERROR;
 }
 
-void HumidityManager::AttributeChangeHandler(EndpointId endpointId, AttributeId attributeId, uint8_t * value, uint16_t size) {}
-
 void HumidityManager::HumiTimerEventHandler(TimerHandle_t xTimer)
 {
     app::DataModel::Nullable<uint16_t> measuredValue;

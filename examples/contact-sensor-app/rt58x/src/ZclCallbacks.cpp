@@ -23,7 +23,6 @@
 #include "AppConfig.h"
 #include "AppTask.h"
 
-#include "ContactManager.h"
 #include <app-common/zap-generated/ids/Attributes.h>
 #include <app-common/zap-generated/ids/Clusters.h>
 #include <app/ConcreteAttributePath.h>
@@ -32,15 +31,10 @@
 using namespace ::chip;
 using namespace ::chip::app::Clusters;
 
+// Only Ember clusters reach this callback. Boolean State is code-driven, so its attribute changes
+// never come through here; the application drives it via BooleanState::FindClusterOnEndpoint().
 void MatterPostAttributeChangeCallback(const chip::app::ConcreteAttributePath & attributePath, uint8_t type, uint16_t size,
                                        uint8_t * value)
 {
-    ClusterId clusterId     = attributePath.mClusterId;
-    AttributeId attributeId = attributePath.mAttributeId;
-    ChipLogProgress(Zcl, "Cluster callback: " ChipLogFormatMEI, ChipLogValueMEI(clusterId));
-
-    if (clusterId == BooleanState::Id)
-    {
-        ContMgr().AttributeChangeHandler(attributePath.mEndpointId, attributeId, value, size);
-    }
+    ChipLogProgress(Zcl, "Cluster callback: " ChipLogFormatMEI, ChipLogValueMEI(attributePath.mClusterId));
 }

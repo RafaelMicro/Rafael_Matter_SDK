@@ -32,7 +32,6 @@ class ContactManager
 {
 public:
     CHIP_ERROR Init();
-    void AttributeChangeHandler(chip::EndpointId endpointId, chip::AttributeId attributeId, uint8_t * value, uint16_t size);
     static void ToggleStateValue(bool val);
 
 private:

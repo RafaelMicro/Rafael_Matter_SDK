@@ -33,7 +33,6 @@ class OccupancyManager
 {
 public:
     CHIP_ERROR Init();
-    void AttributeChangeHandler(chip::EndpointId endpointId, chip::AttributeId attributeId, uint8_t * value, uint16_t size);
     // Reports the raw sensor state to the cluster: true while occupancy is detected, false once
     // detection ends. The cluster clears Occupancy HoldTime seconds after the false.
     CHIP_ERROR SetOccupancy(bool detected);

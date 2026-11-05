@@ -31,7 +31,6 @@ class HumidityManager
 {
 public:
     CHIP_ERROR Init();
-    void AttributeChangeHandler(chip::EndpointId endpointId, chip::AttributeId attributeId, uint8_t * value, uint16_t size);
 
 private:
     friend HumidityManager & HumiMgr();

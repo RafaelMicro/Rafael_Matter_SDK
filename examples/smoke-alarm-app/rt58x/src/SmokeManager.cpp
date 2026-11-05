@@ -62,7 +62,8 @@ CHIP_ERROR SmokeManager::Init()
     mSmokeAlarmState  = AlarmStateEnum::kNormal;
     mCOAlarmState     = AlarmStateEnum::kNormal;
 
-    // SmokeCoAlarm is code-driven but is not part of the ZAP code-driven cluster list, so the
+    // Smoke CO Alarm is code-driven, but its CodegenIntegration only provides weak, empty
+    // MatterSmokeCoAlarm*Callback() stubs and never creates the cluster from ZAP, so the
     // application owns the cluster instance and its registration with the data model provider.
     SmokeCoAlarmCluster::Config config;
     config.featureMap.Set(Feature::kSmokeAlarm).Set(Feature::kCoAlarm);
