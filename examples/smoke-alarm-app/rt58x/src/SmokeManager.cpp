@@ -150,6 +150,16 @@ void SmokeManager::ToggleSmokeState(AlarmStateEnum newAlarmState)
     SmokeCoAlarmServer::Instance().SetExpressedStateByPriority(kAlarmEndpoint, sPriorityOrder);
     PlatformMgr().UnlockChipStack();
 }
+void SmokeManager::ToggleCOState(AlarmStateEnum newAlarmState)
+{
+    mCOAlarmState = newAlarmState;
+    ChipLogProgress(NotSpecified, "CO State: %u", to_underlying(mCOAlarmState));
+
+    PlatformMgr().LockChipStack();
+    SmokeCoAlarmServer::Instance().SetCOState(kAlarmEndpoint, mCOAlarmState);
+    SmokeCoAlarmServer::Instance().SetExpressedStateByPriority(kAlarmEndpoint, sPriorityOrder);
+    PlatformMgr().UnlockChipStack();
+}
 void SmokeManager::AlarmLedTimerHandler(TimerHandle_t xTimer)
 {
     hosal_gpio_pin_toggle(21);

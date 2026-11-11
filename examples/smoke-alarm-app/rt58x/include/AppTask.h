@@ -80,16 +80,12 @@ private:
     {
         kFunction_NoneSelected = 0,
         kFunction_FactoryReset,
-        kFunction_Switch_1,
-        kFunction_Switch_2,
-        kFunction_Switch_3,
 
         kFunction_Invalid
     } Function;
 
     Function_t mFunction;
     bool mFunctionTimerActive;
-    bool mFunctionSwitchActive;
 
     static AppTask sAppTask;
 

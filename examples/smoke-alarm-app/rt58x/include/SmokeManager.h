@@ -35,6 +35,7 @@ class SmokeManager : public chip::app::Clusters::SmokeCoAlarmDelegate
 public:
     CHIP_ERROR Init();
     void ToggleSmokeState(chip::app::Clusters::SmokeCoAlarm::AlarmStateEnum newAlarmState);
+    void ToggleCOState(chip::app::Clusters::SmokeCoAlarm::AlarmStateEnum newAlarmState);
 
     void StartSelfTesting();
 

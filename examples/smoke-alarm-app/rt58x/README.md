@@ -25,7 +25,8 @@ maintains the `ExpressedState` priority order required by the specification.
 
 Two ways to exercise the alarm are provided:
 
-- **Buttons** - trigger a self test, raise a smoke warning, or clear it.
+- **Buttons** - simulate smoke or CO detection: the warning is raised while the
+  button is held and cleared on release.
 - **Test event triggers** - the full set of `SmokeCOTrigger` values (smoke, CO,
   battery, malfunction, end of life, interconnect, contamination, sensitivity
   and silence) can be injected remotely, which is how the certification test
@@ -76,9 +77,8 @@ the pin low to light the LED.
 | GPIO | Action |
 | :--- | :--- |
 | 0 | Hold >= 6 s: factory reset (release earlier to cancel) |
-| 1 | Release: start a manual self test (`TestInProgress` for 10 s) |
-| 2 | Release: set `SmokeState` to **Warning** |
-| 3 | Release: set `SmokeState` to **Normal** (clear the alarm) |
+| 1 | Hold: set `SmokeState` to **Warning**; release: back to **Normal** |
+| 2 | Hold: set `COState` to **Warning**; release: back to **Normal** |
 
 ### LEDs
 
@@ -110,7 +110,7 @@ chip-tool smokecoalarm read smoke-state 1 1
 chip-tool smokecoalarm read co-state 1 1
 chip-tool smokecoalarm read test-in-progress 1 1
 
-# run a self test remotely (equivalent to the button on GPIO 1)
+# run a self test remotely
 chip-tool smokecoalarm self-test-request 1 1
 ```
 
