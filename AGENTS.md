@@ -30,7 +30,9 @@ unless explicitly asked to look there:
   Rafael-authored trees, which are first-party code and must be searched like
   the rest of the repository:
   - `third_party/rafael/` (RT58x SDK, drivers, BLE stack)
-  - `third_party/openthread/openthread-rafael/` (Rafael OpenThread port)
+  - `third_party/rafael/repo/components/network/thread/` (Rafael OpenThread
+    port, a submodule nested in `components`; also reachable through the
+    `third_party/openthread/components-thread` symlink)
 - `out/` (contains build artifacts)
 
 Rafael-authored code also lives outside `third_party/`, mainly in

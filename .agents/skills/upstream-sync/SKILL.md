@@ -15,7 +15,7 @@ support for the RT58x SoC family. It syncs with official upstream releases by
 **file overlay** (copying release files over; no shared git history). During a
 sync, Rafael changes OUTSIDE the well-known Rafael paths
 (`third_party/rafael/`, `src/platform/RT58x/`, `examples/*/rt58x/`,
-`examples/platform/rt58x/`, `third_party/openthread/openthread-rafael/`) are
+`examples/platform/rt58x/`, `third_party/openthread/components-thread`) are
 at risk of being silently clobbered. Before and after a sync, check the full
 inventory below. Three categories: files under `third_party/rafael/`
 (obvious), Rafael files **elsewhere in the tree** (easy to miss), and
@@ -70,7 +70,7 @@ is why the tables below record *what* each change is, not just the filename.
 | `examples/platform/rt58x/` | Shared example glue: `matter_config.cpp`, `init_rt58x_platform.cpp`, `heap_5_rt58x.c` (FreeRTOS heap_5), `uart.cpp`, `matter_shell.cpp`, `cmd_rafael.cpp` (shell commands), `DTM.cpp`/`DTM_RF.c` (RF direct test mode), `OTAConfig.cpp`, `SubscriptionCallback.cpp`, `FreeRTOSConfig.h`, `ldscript/*.ld`, `project_include/OpenThreadConfig.h` |
 | `examples/<app>/rt58x/` | 13 example apps (contact-sensor-app, humidity-sensor-app, light-switch-app, lighting-app, lighting-zigbee, lock-app, occupancy-sensor-app, smart-plug-app, smoke-alarm-app, temperature-measurement-app, thermostat, water-valve-app, window-app), each with `BUILD.gn`, `args.gni`, `src/`, `include/CHIPProjectConfig.h`; `lighting-zigbee` adds `zigbee_src/` |
 | `src/lib/shell/streamer_rt58x.cpp`, `src/lib/shell/MainLoopRT58x.cpp` | Matter shell port |
-| `third_party/openthread/openthread-rafael/` | Rafael OpenThread submodule (`github.com/RafaelMicro/openthread`): `openthread/` core + `openthread_port/` (incl. `openthread-core-rafael-config.h`) |
+| `third_party/openthread/components-thread` | Symlink to `third_party/rafael/repo/components/network/thread`, the Rafael OpenThread submodule (`github.com/RafaelMicro/openthread`) nested in `components`: `openthread/` core + `openthread_port/` (incl. `openthread-core-rafael-config.h`). GN files reference OpenThread through this link |
 | `third_party/openthread/platforms/rt58x/` | OT platform glue: `BUILD.gn`, `system.c` |
 | `examples/build_overrides/rt58x_sdk.gni`, `examples/build_overrides/ot_rt58x.gni` | Set `rt58x_sdk_build_root` for example builds |
 | `tools/Debugger/OpenOCD/` | `script/openocd_rt58x.sh`, `script/target/{rt58x,rt584}.cfg`, `script/interface/cmsis-dap.cfg`, bundled openocd binaries |
@@ -104,4 +104,4 @@ entries here whenever an upstream file is modified in place.)
 | `src/platform/logging/BUILD.gn` | `rt58x` branch for the platform logging backend |
 | `src/system/BUILD.gn` | Imports `//build_overrides/rt58x_sdk.gni`; adds `${rt58x_sdk_build_root}:rt58x_sdk` to `public_deps` for `rt58x` |
 | `src/lib/shell/BUILD.gn` | `rt58x` branch adding `MainLoopRT58x.cpp` and `streamer_rt58x.cpp` |
-| `.gitmodules` | Registers Rafael submodules: `third_party/openthread/openthread-rafael`, `third_party/rafael/repo/components` |
+| `.gitmodules` | Registers the Rafael submodule `third_party/rafael/repo/components` with `recursive = true` (it nests OpenThread at `network/thread`) |

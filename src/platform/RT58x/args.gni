@@ -46,7 +46,7 @@ chip_build_tests = false
 chip_enable_push_av_stream_transport = false
 
 chip_enable_thread = true
-openthread_root = "${chip_root}/third_party/openthread/openthread-rafael/openthread"
+openthread_root = "${chip_root}/third_party/openthread/components-thread/openthread"
 
 openthread_core_config_platform_check_file = ""
 
