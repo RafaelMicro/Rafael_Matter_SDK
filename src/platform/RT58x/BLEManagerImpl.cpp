@@ -484,6 +484,11 @@ void BLEManagerImpl::ble_svcs_matter_evt_handler(void * p_matter_evt_param)
                 event.CHIPoBLEWriteReceived.ConId = p_param->host_id;
                 event.CHIPoBLEWriteReceived.Data  = std::move(buf).UnsafeRelease();
                 err                               = PlatformMgr().PostEvent(&event);
+                if (err != CHIP_NO_ERROR)
+                {
+                    ChipLogError(DeviceLayer, "Failed to post CHIPoBLE write event: %" CHIP_ERROR_FORMAT, err.Format());
+                    System::PacketBufferHandle::Adopt(event.CHIPoBLEWriteReceived.Data);
+                }
             }
         }
         break;
