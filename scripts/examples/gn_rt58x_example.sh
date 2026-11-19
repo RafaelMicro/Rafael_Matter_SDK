@@ -118,6 +118,7 @@ else
 
     # thread build
     #
+    BUILD_START=$SECONDS
     if [ -z "$optArgs" ]; then
         gn gen --check --fail-on-unused-args --export-compile-commands --root="$ROOT" --args="rafael_board=\"$RAFAEL_BOARD\" treat_warnings_as_errors=false" "$BUILD_DIR"
     else
@@ -125,7 +126,13 @@ else
     fi
     ninja -C "$BUILD_DIR"/
     # ninja -v -C "$BUILD_DIR"/
+    BUILD_END=$SECONDS
     # print stats
     arm-none-eabi-size -A "$BUILD_DIR"/*.out
     arm-none-eabi-size -A "$BUILD_DIR"/*.out > "$BUILD_DIR"/size.txt
+
+    { set +x; } 2>/dev/null
+    TOTAL_ELAPSED=$((BUILD_END - BUILD_START))
+    printf "Build elapsed time: %dm%02ds\n" \
+        $((TOTAL_ELAPSED / 60)) $((TOTAL_ELAPSED % 60))
 fi

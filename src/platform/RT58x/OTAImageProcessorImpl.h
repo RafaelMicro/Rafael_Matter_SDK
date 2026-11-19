@@ -50,6 +50,14 @@ private:
     static void HandleAbort(intptr_t context);
     static void HandleProcessBlock(intptr_t context);
     CHIP_ERROR ProcessHeader(ByteSpan & block);
+    /**
+     * Consumes the Rafael image header that follows the Matter header. Fails for images without it.
+     */
+    CHIP_ERROR ProcessRafaelHeader(ByteSpan & block);
+    /**
+     * Writes image data to the FOTA bank through the page-sized writeBuffer
+     */
+    CHIP_ERROR WriteImageData(ByteSpan data);
     static void HandleRestart(chip::System::Layer * systemLayer, void * appState);
 
     /**
@@ -78,6 +86,17 @@ private:
     // Offset indicates how far the write buffer has been filled
     static uint16_t writeBufOffset;
     static uint32_t otaNewVersion;
+
+    static constexpr uint32_t kRafaelHeaderMagic  = 0x544F4652; // "RFOT"
+    static constexpr uint8_t kRafaelHeaderVersion = 1;
+    static constexpr size_t kRafaelHeaderSize     = 16;
+    static uint8_t rafaelHeader[kRafaelHeaderSize];
+    static uint8_t rafaelHeaderOffset;
+    static bool rafaelHeaderParsed;
+    // Values handed to the bootloader through fota_information_t
+    static uint8_t imageInfo;
+    static uint32_t signatureLen;
+    static uint32_t imageLen;
 };
 
 } // namespace chip

@@ -26,22 +26,22 @@ using namespace chip;
 using namespace ::chip::DeviceLayer;
 
 constexpr EndpointId kThermostatEndpoint = 1;
-constexpr uint16_t kSensorTImerPeriodMs  = 30000; // 30s timer period
-constexpr uint16_t kMinTemperatureDelta  = 50;    // 0.5 degree Celcius
+constexpr uint16_t kSensorTimerPeriodMs  = 30000; // 30s timer period
+constexpr uint16_t kMinTemperatureDelta  = 50;    // 0.5 degree Celsius
 
 TimerHandle_t sSensorTimer;
-StaticTimer_t sPowerTimerStruct;
+StaticTimer_t sStaticSensorTimerStruct;
 
 SensorManager SensorManager::sSensorManager;
 
-constexpr uint16_t kSimulatedReadingFrequency = (60000 / kSensorTImerPeriodMs); // Change Simulated number at each minutes
+constexpr uint16_t kSimulatedReadingFrequency = (60000 / kSensorTimerPeriodMs); // Change Simulated number at each minutes
 static int16_t mSimulatedTemp[]               = { 2300, 2400, 2800, 2550, 2200, 2125, 2100, 2600, 1800, 2700 };
 
 CHIP_ERROR SensorManager::Init()
 {
     // Create FreeRTOS sw timer for temp sensor timer.
-    sSensorTimer = xTimerCreateStatic("sensorTmr", pdMS_TO_TICKS(kSensorTImerPeriodMs), true, nullptr, SensorTimerEventHandler,
-                                      &sPowerTimerStruct);
+    sSensorTimer = xTimerCreateStatic("sensorTmr", pdMS_TO_TICKS(kSensorTimerPeriodMs), true, nullptr, SensorTimerEventHandler,
+                                      &sStaticSensorTimerStruct);
 
     if (sSensorTimer == NULL)
     {

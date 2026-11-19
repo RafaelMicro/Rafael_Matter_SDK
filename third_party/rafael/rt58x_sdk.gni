@@ -123,6 +123,7 @@ template("rt58x_sdk") {
       "${rt58x_sdk_root}/components/utility/log",
       "${rt58x_sdk_root}/components/utility/cli/Inc",
       "${rt58x_sdk_root}/components/utility/dump_boot_info/Inc",
+      "${rt58x_sdk_root}/components/utility/Version_Information",
       # RF Include
       "${rt58x_sdk_root}/components/network/lmac15p4/Inc/",
       "${rt58x_sdk_root}/components/network/ruci/include/",
@@ -163,7 +164,13 @@ template("rt58x_sdk") {
                            [ rafael_board ],
                            "list lines")
 
-    defines +=  [ "RAFAEL_SDK_VER=\"1.5.1.0\"",
+    # Get Rafael SDK version (FULL_VERSION in components/VERSION)
+    _sdk_ver = filter_include(read_file("${rt58x_sdk_root}/components/VERSION", "list lines"),
+                              [ "FULL_VERSION=*" ])
+    assert(_sdk_ver != [], "FULL_VERSION not found in components/VERSION")
+    _sdk_ver = string_replace(_sdk_ver[0], "FULL_VERSION=", "")
+
+    defines +=  [ "RAFAEL_SDK_VER=\"${_sdk_ver}\"",
                   "BUILD_HASH_INFO=0x${git_hash}",
                   "CONFIG_BUILD_PROJECT=\"matter-app\""]
     defines += _fw_info
@@ -495,6 +502,8 @@ template("rt58x_sdk") {
       "${rt58x_sdk_root}/components/utility/utility/util_queue.c",
       "${rt58x_sdk_root}/components/utility/utility/util_string.c",
       "${rt58x_sdk_root}/components/utility/dump_boot_info/Src/dump_boot_info.c",
+      "${rt58x_sdk_root}/components/utility/Version_Information/lib_version_info.c",
+      "${rt58x_sdk_root}/components/utility/Version_Information/version_info.c",
       # BLE source
       "${chip_root}/third_party/rafael/BLE_App_Profile/ble_profile_app.c",
       "${chip_root}/third_party/rafael/BLE_App_Profile/ble_profile_def.c",

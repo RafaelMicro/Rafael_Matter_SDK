@@ -30,15 +30,31 @@
 #endif
 #include "AppConfig.h"
 #include "FreeRTOS.h"
+#include <algorithm>
 #include <lib/support/CHIPMem.h>
 #include <lib/support/CHIPMemString.h>
 
 using namespace ::chip::app::Clusters::GeneralDiagnostics;
 
 extern uint8_t _heap_size;
+extern uint8_t _heap2_size;
 namespace chip {
 namespace DeviceLayer {
 
+namespace {
+
+size_t TotalHeapSize()
+{
+    return reinterpret_cast<size_t>(&_heap_size) + reinterpret_cast<size_t>(&_heap2_size);
+}
+
+uint64_t HeapUsed(size_t freeSize)
+{
+    const size_t total = TotalHeapSize();
+    return static_cast<uint64_t>((total > freeSize) ? total - freeSize : 0);
+}
+
+} // namespace
 DiagnosticDataProviderImpl & DiagnosticDataProviderImpl::GetDefaultInstance()
 {
     static DiagnosticDataProviderImpl sInstance;
@@ -55,19 +71,12 @@ CHIP_ERROR DiagnosticDataProviderImpl::GetCurrentHeapFree(uint64_t & currentHeap
 CHIP_ERROR DiagnosticDataProviderImpl::GetCurrentHeapUsed(uint64_t & currentHeapUsed)
 {
     // Calculate the Heap used based on Total heap - Free heap
-    int64_t heapUsed = ((unsigned int) &_heap_size - xPortGetFreeHeapSize());
-
-    // Something went wrong, this should not happen
-    VerifyOrReturnError(heapUsed >= 0, CHIP_ERROR_INVALID_INTEGER_VALUE);
-    currentHeapUsed = static_cast<uint64_t>(heapUsed);
+    currentHeapUsed = HeapUsed(xPortGetFreeHeapSize());
     return CHIP_NO_ERROR;
 }
 CHIP_ERROR DiagnosticDataProviderImpl::GetCurrentHeapHighWatermark(uint64_t & currentHeapHighWatermark)
 {
-    // Calculate the Heap used based on Total heap - Free heap
-    size_t maxheapUsed = ((unsigned int) &_heap_size - xPortGetMinimumEverFreeHeapSize());
-
-    currentHeapHighWatermark = static_cast<uint64_t>(maxheapUsed);
+    currentHeapHighWatermark = HeapUsed(xPortGetMinimumEverFreeHeapSize());
     return CHIP_NO_ERROR;
 }
 CHIP_ERROR DiagnosticDataProviderImpl::ResetWatermarks()
@@ -85,8 +94,7 @@ CHIP_ERROR DiagnosticDataProviderImpl::GetRebootCount(uint16_t & rebootCount)
 
     if (err == CHIP_NO_ERROR)
     {
-        VerifyOrReturnError(count <= UINT16_MAX, CHIP_ERROR_INVALID_INTEGER_VALUE);
-        rebootCount = static_cast<uint16_t>(count);
+        rebootCount = static_cast<uint16_t>(std::min<uint32_t>(count, UINT16_MAX));
     }
 
     return err;
@@ -112,7 +120,7 @@ CHIP_ERROR DiagnosticDataProviderImpl::GetThreadMetrics(ThreadMetrics ** threadM
 
         for (x = 0; x < arraySize; x++)
         {
-            ThreadMetrics * thread = new ThreadMetrics();
+            ThreadMetrics * thread = Platform::New<ThreadMetrics>();
             if (thread)
             {
                 Platform::CopyString(thread->NameBuf, taskStatusArray[x].pcTaskName);
@@ -136,6 +144,17 @@ CHIP_ERROR DiagnosticDataProviderImpl::GetThreadMetrics(ThreadMetrics ** threadM
 
     return CHIP_NO_ERROR;
 }
+
+void DiagnosticDataProviderImpl::ReleaseThreadMetrics(ThreadMetrics * threadMetrics)
+{
+    while (threadMetrics)
+    {
+        ThreadMetrics * thread = threadMetrics;
+        threadMetrics          = threadMetrics->Next;
+        Platform::Delete(thread);
+    }
+}
+
 CHIP_ERROR DiagnosticDataProviderImpl::GetNetworkInterfaces(NetworkInterface ** netifpp)
 {
     NetworkInterface * ifp = Platform::New<NetworkInterface>();

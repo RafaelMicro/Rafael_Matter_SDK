@@ -26,13 +26,13 @@ using namespace chip;
 using namespace chip::DeviceLayer;
 using namespace chip::app::Clusters;
 
-constexpr EndpointId kContactEndpoint = 1;
+constexpr EndpointId kRainEndpoint = 1;
 
 RainManager RainManager::sRainMgr;
 
 CHIP_ERROR RainManager::Init()
 {
-    auto booleanState = BooleanState::FindClusterOnEndpoint(kContactEndpoint);
+    auto booleanState = BooleanState::FindClusterOnEndpoint(kRainEndpoint);
     // Default resting state is "no rain" (StateValue = false); pressing pin1 reports rain.
     ChipLogProgress(NotSpecified, "Rain State: No rain");
     booleanState->SetStateValue(false);
@@ -44,7 +44,7 @@ void RainManager::AttributeChangeHandler(EndpointId endpointId, AttributeId attr
 
 void RainManager::ToggleStateValue(bool val)
 {
-    auto booleanState = BooleanState::FindClusterOnEndpoint(kContactEndpoint);
+    auto booleanState = BooleanState::FindClusterOnEndpoint(kRainEndpoint);
     if (booleanState != nullptr)
     {
         if (val)

@@ -35,10 +35,13 @@ SECTIONS
     .text :
     {
         KEEP(*(.vectors))
-        KEEP(*(.vector_tail))
         __Vectors_End = .;
-        __Vectors_Size = __Vectors_End - __Vectors;        
-        __end__ = .;        
+        __Vectors_Size = __Vectors_End - __Vectors;
+        __build_info_start = .;
+        KEEP(*(.build_info))
+        __build_info_end = .;
+        __build_info_size = __build_info_end - __build_info_start;
+        __end__ = .;
         *(.text*)
 
         KEEP(*(.init))

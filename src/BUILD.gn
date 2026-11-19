@@ -202,6 +202,9 @@ if (chip_build_tests) {
     if (chip_device_config_enable_joint_fabric) {
       tests += [ "${chip_root}/src/app/server/tests" ]
     }
+
+    tests +=
+        [ "${chip_root}/examples/ota-provider-app/ota-provider-common/tests" ]
   }
 
 

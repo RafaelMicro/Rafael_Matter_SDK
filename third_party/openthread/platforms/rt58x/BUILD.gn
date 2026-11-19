@@ -19,8 +19,8 @@ import("//build_overrides/rt58x_sdk.gni")
 import("${chip_root}/src/platform/device.gni")
 import("${rt58x_sdk_build_root}/rt58x_sdk.gni")
 
-openthread_rt58x_root = "${chip_root}/third_party/openthread/openthread-rafael/openthread"
-openthread_platform_root = "${chip_root}/third_party/openthread/openthread-rafael/openthread_port"
+openthread_rt58x_root = "${chip_root}/third_party/openthread/components-thread/openthread"
+openthread_platform_root = "${chip_root}/third_party/openthread/components-thread/openthread_port"
 
 config("openthread_rt58x_config") {
   include_dirs = [ "${chip_root}/examples/platform/rt58x" ]
@@ -87,6 +87,8 @@ static_library("openthread-rt58x-root") {
       "${openthread_rt58x_root}/examples/apps/cli/cli_uart.cpp",
       "${openthread_rt58x_root}/src/cli/cli.cpp",
       "${openthread_rt58x_root}/src/cli/cli.hpp",
+      "${openthread_rt58x_root}/src/cli/cli_ba.cpp",
+      "${openthread_rt58x_root}/src/cli/cli_ba.hpp",
       "${openthread_rt58x_root}/src/cli/cli_bbr.cpp",
       "${openthread_rt58x_root}/src/cli/cli_bbr.hpp",
       "${openthread_rt58x_root}/src/cli/cli_br.cpp",
@@ -118,6 +120,8 @@ static_library("openthread-rt58x-root") {
       "${openthread_rt58x_root}/src/cli/cli_network_data.hpp",
       "${openthread_rt58x_root}/src/cli/cli_ping.cpp",
       "${openthread_rt58x_root}/src/cli/cli_ping.hpp",
+      "${openthread_rt58x_root}/src/cli/cli_plat_tcp.cpp",
+      "${openthread_rt58x_root}/src/cli/cli_plat_tcp.hpp",
       "${openthread_rt58x_root}/src/cli/cli_srp_client.cpp",
       "${openthread_rt58x_root}/src/cli/cli_srp_client.hpp",
       "${openthread_rt58x_root}/src/cli/cli_srp_server.cpp",

@@ -35,13 +35,14 @@ class SmokeManager : public chip::app::Clusters::SmokeCoAlarmDelegate
 public:
     CHIP_ERROR Init();
     void ToggleSmokeState(chip::app::Clusters::SmokeCoAlarm::AlarmStateEnum newAlarmState);
-    void HandleSmokeState(uint8_t SmokeAlarmState);
-    void HandleOnoffValue(uint8_t onoff);
+    void ToggleCOState(chip::app::Clusters::SmokeCoAlarm::AlarmStateEnum newAlarmState);
 
     void StartSelfTesting();
 
     // SmokeCoAlarmDelegate: the cluster has already flagged TestInProgress/Testing.
     void OnSelfTestRequested() override;
+    void OnExpressedStateChanged(chip::app::Clusters::SmokeCoAlarm::ExpressedStateEnum newExpressedState) override;
+    void OnSmokeSensitivityLevelChanged(chip::app::Clusters::SmokeCoAlarm::SensitivityEnum newSmokeSensitivityLevel) override;
 
     enum AlarmState : uint8_t
     {

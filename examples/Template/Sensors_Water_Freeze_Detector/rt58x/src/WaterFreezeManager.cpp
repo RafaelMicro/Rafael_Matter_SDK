@@ -26,13 +26,13 @@ using namespace chip;
 using namespace chip::DeviceLayer;
 using namespace chip::app::Clusters;
 
-constexpr EndpointId kContactEndpoint = 1;
+constexpr EndpointId kWaterFreezeEndpoint = 1;
 
 WaterFreezeManager WaterFreezeManager::sWaterFreezeMgr;
 
 CHIP_ERROR WaterFreezeManager::Init()
 {
-    auto booleanState = BooleanState::FindClusterOnEndpoint(kContactEndpoint);
+    auto booleanState = BooleanState::FindClusterOnEndpoint(kWaterFreezeEndpoint);
     // Default resting state is "no freeze" (StateValue = false); pressing pin1 reports a freeze.
     ChipLogProgress(NotSpecified, "Water Freeze State: No freeze");
     booleanState->SetStateValue(false);
@@ -44,7 +44,7 @@ void WaterFreezeManager::AttributeChangeHandler(EndpointId endpointId, Attribute
 
 void WaterFreezeManager::ToggleStateValue(bool val)
 {
-    auto booleanState = BooleanState::FindClusterOnEndpoint(kContactEndpoint);
+    auto booleanState = BooleanState::FindClusterOnEndpoint(kWaterFreezeEndpoint);
     if (booleanState != nullptr)
     {
         if (val)

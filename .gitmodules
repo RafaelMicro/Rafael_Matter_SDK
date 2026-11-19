@@ -27,9 +27,6 @@
 	path = third_party/jsoncpp/repo
 	url = https://github.com/open-source-parsers/jsoncpp.git
 	shallow = true
-[submodule "third_party/openthread/openthread-rafael"]
-	path = third_party/openthread/openthread-rafael
-	url = https://github.com/RafaelMicro/openthread
 [submodule "third_party/boringssl/repo/src"]
 	path = third_party/boringssl/repo/src
 	url = https://github.com/google/boringssl.git
@@ -49,3 +46,8 @@
 [submodule "third_party/rafael/repo/components"]
 	path = third_party/rafael/repo/components
 	url = https://github.com/RafaelMicro/components.git
+	recursive = true
+[submodule "third_party/uriparser/repo"]
+	path = third_party/uriparser/repo
+	url = https://github.com/uriparser/uriparser.git
+	branch = uriparser-1.0.0

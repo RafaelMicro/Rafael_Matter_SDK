@@ -466,6 +466,12 @@ void BLEManagerImpl::ble_svcs_matter_evt_handler(void * p_matter_evt_param)
         case BLESERVICE_MATTER_CLIENT_TX_BUFFER_WRITE_EVENT: {
             System::PacketBufferHandle buf;
             buf = System::PacketBufferHandle::New(p_param->length);
+            if (buf.IsNull())
+            {
+                ChipLogError(DeviceLayer, "Failed to allocate buffer for CHIPoBLE write (len %u)",
+                             static_cast<unsigned>(p_param->length));
+                break;
+            }
             memcpy(buf->Start(), p_param->data, p_param->length);
             buf->SetDataLength(p_param->length);
             // ChipLogDetail(DeviceLayer,"Write request/command received for CHIPoBLE RX characteristic (len
@@ -478,6 +484,11 @@ void BLEManagerImpl::ble_svcs_matter_evt_handler(void * p_matter_evt_param)
                 event.CHIPoBLEWriteReceived.ConId = p_param->host_id;
                 event.CHIPoBLEWriteReceived.Data  = std::move(buf).UnsafeRelease();
                 err                               = PlatformMgr().PostEvent(&event);
+                if (err != CHIP_NO_ERROR)
+                {
+                    ChipLogError(DeviceLayer, "Failed to post CHIPoBLE write event: %" CHIP_ERROR_FORMAT, err.Format());
+                    System::PacketBufferHandle::Adopt(event.CHIPoBLEWriteReceived.Data);
+                }
             }
         }
         break;
@@ -681,8 +692,6 @@ ble_err_t BLEManagerImpl::ble_service_data_cb(void * p_param)
 int BLEManagerImpl::ble_init(void)
 {
     int status;
-    ble_unique_code_format_t unique_code_param;
-    ble_gap_addr_t device_addr_param;
 
     status = BLE_ERR_OK;
     do
@@ -705,43 +714,23 @@ int BLEManagerImpl::ble_init(void)
             break;
         }
 
-        uint8_t temp[256];
-        flash_read_sec_register((uint32_t) temp, 0x1100);
-        while (flash_check_busy())
-            ;
-        memcpy(&unique_code_param, temp, sizeof(ble_unique_code_format_t));
-        uint8_t invalid_addr[6]  = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-        uint8_t invalid_addr2[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-        // if (0)  //(memcmp(&unique_code_param.ble_addr, invalid_ble_addr, 6))
-        if (memcmp(invalid_addr, unique_code_param.ble_addr, 6) != 0 && memcmp(invalid_addr2, unique_code_param.ble_addr, 6) != 0 &&
-            unique_code_param.addr_type <= RANDOM_RESOLVABLE_ADDR)
+        uint8_t invalid_ble_addr[6]   = { 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0 };
+        uint8_t invalid_ble_addr_2[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+        do
         {
-            device_addr_param.addr_type = unique_code_param.addr_type;
-            memcpy(&device_addr_param.addr, &unique_code_param.ble_addr, 6);
-            status = ble_cmd_device_addr_set((ble_gap_addr_t *) &device_addr_param);
-            if (status != BLE_ERR_OK)
-            {
-                break;
-            }
-            status = ble_cmd_write_identity_resolving_key((ble_sm_irk_param_t *) &unique_code_param.ble_irk[0]);
-            if (status != BLE_ERR_OK)
-            {
-                break;
-            }
-        }
-        else
-        {
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < 6; i++)
             {
                 uint32_t randnum;
                 hosal_trng_get_random_number(&randnum, 1);
                 DEVICE_ADDR.addr[i] = (uint8_t) (randnum & 0xFF);
             }
-            status = ble_cmd_device_addr_set((ble_gap_addr_t *) &DEVICE_ADDR);
-            if (status != BLE_ERR_OK)
-            {
-                break;
-            }
+            DEVICE_ADDR.addr[5] = (uint8_t) ((DEVICE_ADDR.addr[5] & 0x3F) | 0xC0);
+        } while (memcmp(DEVICE_ADDR.addr, invalid_ble_addr, 6) == 0 || memcmp(DEVICE_ADDR.addr, invalid_ble_addr_2, 6) == 0);
+
+        status = ble_cmd_device_addr_set((ble_gap_addr_t *) &DEVICE_ADDR);
+        if (status != BLE_ERR_OK)
+        {
+            break;
         }
 
         vTaskDelay(5);

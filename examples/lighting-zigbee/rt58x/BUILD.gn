@@ -96,7 +96,10 @@ rt58x_executable("lighting_app") {
     "zigbee_src/zigbee_api.c",
     "zigbee_src/zigbee_zcl_msg_handler.c",
   ]
-
+  # Zigbee memory configuration to reduce RAM usage
+  # sources += [
+  #   "zigbee_src/zb_mem_config_app.c"
+  # ]
   deps = [
     ":sdk",
     "${chip_root}/examples/lighting-app/lighting-common",

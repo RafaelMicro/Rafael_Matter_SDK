@@ -88,7 +88,7 @@
 #define OPENTHREAD_CONFIG_MAC_CSL_REQUEST_AHEAD_US 0
 #define OPENTHREAD_CONFIG_MAC_DEFAULT_MAX_FRAME_RETRIES_DIRECT 4
 #define OPENTHREAD_CONFIG_MAC_DEFAULT_MAX_FRAME_RETRIES_INDIRECT 8
-
+#define OPENTHREAD_CONFIG_MAC_SCAN_DURATION 240
 /* ========================================================================== */
 /* Security / ECDSA                                                            */
 /* ========================================================================== */

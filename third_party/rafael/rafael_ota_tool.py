@@ -25,6 +25,9 @@ Usage examples:
 Creating OTA image file:
 ./ota_image_tool.py create -v 0xDEAD -p 0xBEEF -vn 1 -vs "1.0" -da sha256 my-firmware.bin my-firmware.ota
 
+Creating signed OTA image file (sign -> compress -> sign, ECDSA P-256):
+./ota_image_tool.py create -v 0xDEAD -p 0xBEEF -vn 1 -vs "1.0" -da sha256 -pk priv.pem -pub pub.pem my-firmware.bin my-firmware.ota
+
 Showing OTA image file info:
 ./ota_image_tool.py show my-firmware.ota
 """
@@ -42,6 +45,9 @@ from enum import IntEnum
 sys.path.insert(0, os.path.join(
     os.path.dirname(__file__), '../../src/controller/python'))
 from matter.tlv import TLVReader, TLVWriter, uint  # noqa: E402
+
+from rafael_sign_image import (MAX_INPUT_IMAGE_SIZE, load_private_key, load_public_key, sbin_size,  # noqa: E402
+                               sign_image, signing_available)
 
 HEADER_MAGIC = 0x1BEEF11E
 FIXED_HEADER_FORMAT = '<IQI'
@@ -64,9 +70,15 @@ DIGEST_ALGORITHM_ID = dict(
 DIGEST_ALL_ALGORITHMS = hashlib.algorithms_available.intersection(
     DIGEST_ALGORITHM_ID.keys())
 
-# Buffer size used for file reads to ensure large files do not need to be loaded
-# into memory fully before processing.
-PAYLOAD_BUFFER_SIZE = 16 * 1024
+# Rafael image header placed in front of each payload, after the Matter OTA header:
+# magic (u32) | version (u8) | header size (u8) | image info (u8) | reserved (u8) |
+# signature length (u32) | image length (u32), all little endian.
+# Image info and signature length map to fota_information_t of the RT58x bootloader.
+RAFAEL_HEADER_MAGIC = 0x544F4652  # "RFOT"
+RAFAEL_HEADER_VERSION = 1
+RAFAEL_HEADER_FORMAT = '<IBBBBII'
+FOTA_IMAGE_INFO_COMPRESSED = 0x01
+FOTA_IMAGE_INFO_SIGNATURE = 0x02
 
 
 class HeaderTag(IntEnum):
@@ -122,9 +134,37 @@ def validate_header_attributes(args: object):
             warn('Release notes URL does not start with "https://"')
 
 
-def generate_payload_summary(args: object):
+def validate_input_files(args: object):
     """
-    Calculate total size and hash of all concatenated input payload files
+    Validate the input firmware images, using the size after signing for signed images
+    """
+
+    for path in args.input_files:
+        size = os.path.getsize(path)
+        description = f'{path} is {size} bytes'
+        if args.private_key is not None:
+            size = sbin_size(size)
+            description = f'{path} is {size} bytes after signing'
+        if size > MAX_INPUT_IMAGE_SIZE:
+            error(f'{description}, larger than the {MAX_INPUT_IMAGE_SIZE // 1024} KB '
+                  f'({MAX_INPUT_IMAGE_SIZE} bytes) limit')
+
+
+def validate_signing_attributes(args: object):
+    """
+    Validate options used to sign the OTA image payload
+    """
+
+    if args.public_key is not None and args.private_key is None:
+        error('Public key is given without private key')
+
+    if args.private_key is not None and not signing_available():
+        error('Signing requires the "cryptography" Python package')
+
+
+def generate_payload_summary(args: object, payloads: list):
+    """
+    Calculate total size and hash of all concatenated payloads
     """
 
     total_size = 0
@@ -133,16 +173,9 @@ def generate_payload_summary(args: object):
     if digest.digest_size < (256 // 8):
         warn('Using digest length below 256 bits is not recommended')
 
-    for path in args.input_files:
-        compressed = path+'.lzma'
-        lzma_compression(path, compressed)
-        with open(compressed, 'rb') as file:
-            while True:
-                chunk = file.read(PAYLOAD_BUFFER_SIZE)
-                if not chunk:
-                    break
-                total_size += len(chunk)
-                digest.update(chunk)
+    for payload in payloads:
+        total_size += len(payload)
+        digest.update(payload)
 
     return total_size, digest.digest()
 
@@ -191,9 +224,10 @@ def generate_header(header_tlv: bytes, payload_size: int):
     return fixed_header + header_tlv
 
 
-def lzma_compression(inputFileName, outputFileName):
-    with open(inputFileName, 'rb') as i:
-        data = i.read()
+def lzma_compress(data: bytes) -> bytes:
+    """
+    Compress data into the .lzma (ALONE) format expected by the RT58x bootloader
+    """
 
     # Match pylzma defaults: BT4, fastBytes=128, no EOS marker, dict=2^16, lc=3, lp=0, pb=2
     filters = [{"id": lzma.FILTER_LZMA1, "dict_size": 1 << 16,
@@ -210,31 +244,73 @@ def lzma_compression(inputFileName, outputFileName):
     props = lzma.compress(b'', format=lzma.FORMAT_ALONE, filters=filters)[:5]
 
     # .lzma ALONE layout: 5-byte props | 8-byte LE uncompressed size | compressed stream
-    with open(outputFileName, 'wb') as o:
-        o.write(props + struct.pack('<Q', len(data)) + stream)
+    return props + struct.pack('<Q', len(data)) + stream
 
-    sys.stdout.flush()
 
-def write_image(args: object, header: bytes):
+def build_payload(path: str, out_dir: str, private_key, public_key):
     """
-    Write OTA image file consisting of header and concatenated payload files
+    Build the OTA payload of one input file.
+
+    Without a private key the payload is the LZMA compressed image. With a private key the
+    image is signed, compressed and signed again. Intermediate files are written to out_dir
+    for inspection.
+
+    Returns the payload and the size of the compressed image.
+    """
+
+    with open(path, 'rb') as file:
+        data = file.read()
+
+    name = os.path.basename(path)
+
+    if private_key is None:
+        compressed = lzma_compress(data)
+        with open(os.path.join(out_dir, name + '.lzma'), 'wb') as file:
+            file.write(compressed)
+        return compressed, len(compressed)
+
+    base = os.path.join(out_dir, os.path.splitext(name)[0])
+
+    signed = sign_image(data, private_key, public_key, patch_length=True)
+    with open(base + '_Signature.bin', 'wb') as file:
+        file.write(signed)
+
+    compressed = lzma_compress(signed)
+    with open(base + '_Signature_compress.bin', 'wb') as file:
+        file.write(compressed)
+
+    payload = sign_image(compressed, private_key, public_key, patch_length=False)
+    with open(base + '_Signature_compress_Signature.bin', 'wb') as file:
+        file.write(payload)
+
+    return payload, len(compressed)
+
+
+def generate_rafael_header(image_info: int, signature_len: int, image_len: int) -> bytes:
+    """
+    Generate the Rafael image header telling the device how to hand the image to the bootloader
+    """
+
+    return struct.pack(RAFAEL_HEADER_FORMAT,
+                       RAFAEL_HEADER_MAGIC,
+                       RAFAEL_HEADER_VERSION,
+                       struct.calcsize(RAFAEL_HEADER_FORMAT),
+                       image_info,
+                       0,
+                       signature_len,
+                       image_len)
+
+
+def write_image(args: object, header: bytes, payloads: list):
+    """
+    Write OTA image file consisting of header and concatenated payloads
     """
 
     with open(args.output_file, 'wb') as out_file:
         out_file.write(header)
-        # print(len(header))
-        # print(args.input_files)
-        # print(args.output_file)
 
-        for path in args.input_files:
-            compressed = path+'.lzma'
-            lzma_compression(path, compressed)
-            with open(compressed, 'rb') as file:
-                while True:
-                    chunk = file.read(PAYLOAD_BUFFER_SIZE)
-                    if not chunk:
-                        break
-                    out_file.write(chunk)
+        for payload in payloads:
+            out_file.write(payload)
 
 
 def generate_image(args: object):
@@ -245,22 +321,38 @@ def generate_image(args: object):
     print(f'  Vendor ID      : 0x{args.vendor_id:04x}')
     print(f'  Product ID     : 0x{args.product_id:04x}')
     print(f'  Version        : {args.version} ({args.version_str})')
+    print(f'  Signing        : {"enabled" if args.private_key else "disabled"}')
 
-    original_sizes = {path: os.path.getsize(path) for path in args.input_files}
+    private_key = None
+    public_key = None
+    if args.private_key is not None:
+        private_key = load_private_key(args.private_key)
+        if args.public_key is not None:
+            public_key = load_public_key(args.public_key)
 
-    payload_size, payload_digest = generate_payload_summary(args)
+    # Intermediate files go next to the output OTA image
+    out_dir = os.path.dirname(os.path.abspath(args.output_file))
 
+    payloads = []
     print('  Compression:')
     for path in args.input_files:
-        orig = original_sizes[path]
-        comp = os.path.getsize(path + '.lzma')
+        image, comp = build_payload(path, out_dir, private_key, public_key)
+        if private_key is not None:
+            rafael_header = generate_rafael_header(FOTA_IMAGE_INFO_COMPRESSED | FOTA_IMAGE_INFO_SIGNATURE, comp, len(image))
+        else:
+            rafael_header = generate_rafael_header(FOTA_IMAGE_INFO_COMPRESSED, 0, len(image))
+        payloads.append(rafael_header + image)
+        orig = os.path.getsize(path)
         ratio = comp / orig * 100 if orig > 0 else 0
         print(f'    {os.path.basename(path)}: {orig} -> {comp} bytes ({ratio:.1f}%)')
+        if private_key is not None:
+            print(f'    signed image: {len(image)} bytes (signature length {comp})')
 
+    payload_size, payload_digest = generate_payload_summary(args, payloads)
 
     header_tlv = generate_header_tlv(args, payload_size, payload_digest)
     header = generate_header(header_tlv, payload_size)
-    write_image(args, header)
+    write_image(args, header, payloads)
     print(f'  Output file    : {args.output_file} ({len(header) + payload_size} bytes)')
     print('OTA image generated successfully.')
 
@@ -331,6 +423,26 @@ def show_header(args: object):
         # bytes_encode = base64.b64encode(b)
         # print(bytes_encode)
 
+    with open(args.image_file, 'rb') as file:
+        file.seek(struct.calcsize(FIXED_HEADER_FORMAT) + header_size)
+        rafael_header = file.read(struct.calcsize(RAFAEL_HEADER_FORMAT))
+
+    if len(rafael_header) < struct.calcsize(RAFAEL_HEADER_FORMAT) or \
+            struct.unpack_from('<I', rafael_header)[0] != RAFAEL_HEADER_MAGIC:
+        print('Rafael Header: not present')
+        return
+
+    (_magic, version, size, image_info, _reserved,
+     signature_len, image_len) = struct.unpack(RAFAEL_HEADER_FORMAT, rafael_header)
+
+    print('Rafael Header:')
+    print(f'  Version: {version}')
+    print(f'  Header Size: {size}')
+    print(f'  Image Info: 0x{image_info:02x} (compressed: {bool(image_info & FOTA_IMAGE_INFO_COMPRESSED)}, '
+          f'signed: {bool(image_info & FOTA_IMAGE_INFO_SIGNATURE)})')
+    print(f'  Signature Length: {signature_len} (0x{signature_len:x})')
+    print(f'  Image Length: {image_len} (0x{image_len:x})')
+
 def update_header_args(args: object) -> None:
     """
     Generates an image file with a new header
@@ -397,6 +509,10 @@ def main():
                                help='Maximum software version that can be updated to this image')
     create_parser.add_argument(
         '-rn', '--release-notes', help='Release note URL')
+    create_parser.add_argument('-pk', '--private-key',
+                               help='ECDSA P-256 private key (PEM); when given, the image is signed, compressed and signed again')
+    create_parser.add_argument('-pub', '--public-key',
+                               help='ECDSA P-256 public key (PEM) used to verify the signatures after signing')
     create_parser.add_argument('input_files', nargs='+',
                                help='Path to input image payload file')
     create_parser.add_argument('output_file', help='Path to output image file')
@@ -433,6 +549,8 @@ def main():
 
     if args.subcommand == 'create':
         validate_header_attributes(args)
+        validate_input_files(args)
+        validate_signing_attributes(args)
         generate_image(args)
     elif args.subcommand == 'show':
         show_header(args)

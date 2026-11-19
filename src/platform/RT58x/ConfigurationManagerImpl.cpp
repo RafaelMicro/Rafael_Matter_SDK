@@ -22,14 +22,46 @@
 #include <platform/internal/GenericConfigurationManagerImpl.ipp>
 
 #include <platform/ConfigurationManager.h>
+#include <platform/DiagnosticDataProvider.h>
 #include <platform/RT58x/RT58xConfig.h>
 
 #include "mcu.h"
+#if defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
+#include "dpd.h"
+#endif
 
 namespace chip {
 namespace DeviceLayer {
 
 using namespace ::chip::DeviceLayer::Internal;
+
+namespace {
+
+BootReasonType ReadHardwareBootReason()
+{
+#if defined(CONFIG_RT584H) || defined(CONFIG_RT584L) || defined(CONFIG_RT584HA4)
+    uint32_t cause = 0;
+    get_all_reset_cause(&cause);
+    clear_reset_cause();
+    if (cause & RESET_BY_WATCH_DOG)
+    {
+        return BootReasonType::kHardwareWatchdogReset;
+    }
+    if (cause & RESET_BY_SOFT_RESET)
+    {
+        return BootReasonType::kSoftwareReset;
+    }
+    if (cause & (RESET_BY_POWER_ON | RESET_BY_EXT_RESET))
+    {
+        return BootReasonType::kPowerOnReboot;
+    }
+    return BootReasonType::kUnspecified;
+#else
+    return BootReasonType::kUnspecified;
+#endif
+}
+
+} // namespace
 
 ConfigurationManagerImpl & ConfigurationManagerImpl::GetDefaultInstance()
 {
@@ -39,31 +71,46 @@ ConfigurationManagerImpl & ConfigurationManagerImpl::GetDefaultInstance()
 
 CHIP_ERROR ConfigurationManagerImpl::Init()
 {
-    CHIP_ERROR err;
-    uint32_t rebootCount;
-
+    uint32_t rebootCount = 0;
     if (RT58xConfig::ConfigValueExists(RT58xConfig::kConfigKey_RebootCount))
     {
-        err = GetRebootCount(rebootCount);
-        SuccessOrExit(err);
+        CHIP_ERROR err = GetRebootCount(rebootCount);
+        if (err != CHIP_NO_ERROR)
+        {
+            ChipLogError(DeviceLayer, "Invalid reboot count, restarting it: %" CHIP_ERROR_FORMAT, err.Format());
+            rebootCount = 0;
+        }
+    }
+    ReturnErrorOnFailure(StoreRebootCount(rebootCount + 1));
 
-        err = StoreRebootCount(rebootCount + 1);
-        SuccessOrExit(err);
-    }
-    else
-    {
-        // The first boot after factory reset of the Node.
-        err = StoreRebootCount(1);
-        SuccessOrExit(err);
-    }
+    DetermineBootReason();
+
     // Initialize the generic implementation base class.
-    err = Internal::GenericConfigurationManagerImpl<RT58xConfig>::Init();
-    SuccessOrExit(err);
+    return Internal::GenericConfigurationManagerImpl<RT58xConfig>::Init();
+}
 
-    err = CHIP_NO_ERROR;
+void ConfigurationManagerImpl::DetermineBootReason()
+{
+    uint32_t storedReason = 0;
+    CHIP_ERROR err        = RT58xConfig::ReadConfigValue(RT58xConfig::kCounterKey_BootReason, storedReason);
 
-exit:
-    return err;
+    BootReasonType reason = ReadHardwareBootReason();
+    if (err == CHIP_NO_ERROR && storedReason == to_underlying(BootReasonType::kSoftwareUpdateCompleted))
+    {
+        reason = BootReasonType::kSoftwareUpdateCompleted;
+    }
+    mBootReason = to_underlying(reason);
+
+    if (err != CHIP_DEVICE_ERROR_CONFIG_NOT_FOUND)
+    {
+        err = RT58xConfig::ClearConfigValue(RT58xConfig::kCounterKey_BootReason);
+        if (err != CHIP_NO_ERROR)
+        {
+            ChipLogError(DeviceLayer, "Failed to clear stored boot reason: %" CHIP_ERROR_FORMAT, err.Format());
+        }
+    }
+
+    ChipLogProgress(DeviceLayer, "Boot reason: %" PRIu32, mBootReason);
 }
 
 CHIP_ERROR ConfigurationManagerImpl::GetSoftwareVersion(uint32_t & softwareVer)
@@ -129,7 +176,8 @@ CHIP_ERROR ConfigurationManagerImpl::StoreRebootCount(uint32_t rebootCount)
 
 CHIP_ERROR ConfigurationManagerImpl::GetBootReason(uint32_t & bootReason)
 {
-    return ReadConfigValue(RT58xConfig::kCounterKey_BootReason, bootReason);
+    bootReason = mBootReason;
+    return CHIP_NO_ERROR;
 }
 CHIP_ERROR ConfigurationManagerImpl::StoreBootReason(uint32_t bootReason)
 {

@@ -26,6 +26,7 @@
 
 #include <lib/support/Base64.h>
 #include <lib/support/SafeInt.h>
+#include <platform/CHIPDeviceError.h>
 
 // #include <logging/log.h>
 #include "FactoryDataParser.h"
@@ -43,6 +44,14 @@ CHIP_ERROR LoadKeypairFromRaw(ByteSpan privateKey, ByteSpan publicKey, Crypto::P
     memcpy(serializedKeypair.Bytes(), publicKey.data(), publicKey.size());
     memcpy(serializedKeypair.Bytes() + publicKey.size(), privateKey.data(), privateKey.size());
     return keypair.Deserialize(serializedKeypair);
+}
+
+CHIP_ERROR CopyStringToBuffer(const char * src, char * buf, size_t bufSize)
+{
+    const size_t len = strlen(src);
+    VerifyOrReturnError(bufSize > len, CHIP_ERROR_BUFFER_TOO_SMALL);
+    memcpy(buf, src, len + 1);
+    return CHIP_NO_ERROR;
 }
 } // namespace
 
@@ -420,10 +429,7 @@ CHIP_ERROR FactoryDataProvider<FlashFactoryData>::GetVendorName(char * buf, size
     // memcpy(buf, mFactoryData.vendor_name.data, mFactoryData.vendor_name.len);
     // buf[mFactoryData.vendor_name.len] = 0;
 
-    memcpy(buf, CHIP_DEVICE_CONFIG_DEVICE_VENDOR_NAME, strlen(CHIP_DEVICE_CONFIG_DEVICE_VENDOR_NAME) + 1);
-    buf[strlen(CHIP_DEVICE_CONFIG_DEVICE_VENDOR_NAME) + 1] = 0;
-    // err("vendor name: %s\r\n", buf);
-    return CHIP_NO_ERROR;
+    return CopyStringToBuffer(CHIP_DEVICE_CONFIG_DEVICE_VENDOR_NAME, buf, bufSize);
 }
 
 template <class FlashFactoryData>
@@ -447,10 +453,7 @@ CHIP_ERROR FactoryDataProvider<FlashFactoryData>::GetProductName(char * buf, siz
     // memcpy(buf, mFactoryData.product_name.data, mFactoryData.product_name.len);
     // buf[mFactoryData.product_name.len] = 0;
 
-    memcpy(buf, CHIP_DEVICE_CONFIG_DEVICE_PRODUCT_NAME, strlen(CHIP_DEVICE_CONFIG_DEVICE_PRODUCT_NAME) + 1);
-    buf[strlen(CHIP_DEVICE_CONFIG_DEVICE_PRODUCT_NAME) + 1] = 0;
-    // err("product name: %s\r\n", CHIP_DEVICE_CONFIG_DEVICE_PRODUCT_NAME);
-    return CHIP_NO_ERROR;
+    return CopyStringToBuffer(CHIP_DEVICE_CONFIG_DEVICE_PRODUCT_NAME, buf, bufSize);
 }
 
 template <class FlashFactoryData>
@@ -467,25 +470,19 @@ CHIP_ERROR FactoryDataProvider<FlashFactoryData>::GetProductId(uint16_t & produc
 template <class FlashFactoryData>
 CHIP_ERROR FactoryDataProvider<FlashFactoryData>::GetPartNumber(char * buf, size_t bufSize)
 {
-    // err("enter %s\r\n", __FUNCTION__);
-    return CHIP_NO_ERROR;
+    return CHIP_DEVICE_ERROR_CONFIG_NOT_FOUND;
 }
 
 template <class FlashFactoryData>
 CHIP_ERROR FactoryDataProvider<FlashFactoryData>::GetProductURL(char * buf, size_t bufSize)
 {
-    // err("enter %s\r\n", __FUNCTION__);
-    memcpy(buf, "https://www.rafaelmicro.com/tw/", strlen("https://www.rafaelmicro.com/tw/") + 1);
-    // err("URL: %s\r\n", buf);
-
-    return CHIP_NO_ERROR;
+    return CHIP_DEVICE_ERROR_CONFIG_NOT_FOUND;
 }
 
 template <class FlashFactoryData>
 CHIP_ERROR FactoryDataProvider<FlashFactoryData>::GetProductLabel(char * buf, size_t bufSize)
 {
-    // err("enter %s\r\n", __FUNCTION__);
-    return CHIP_NO_ERROR;
+    return CHIP_DEVICE_ERROR_CONFIG_NOT_FOUND;
 }
 
 template <class FlashFactoryData>
@@ -503,7 +500,9 @@ CHIP_ERROR FactoryDataProvider<FlashFactoryData>::GetSerialNumber(char * buf, si
     flash_get_unique_id((uint32_t) temp, 8);
     // memcpy(buf, CHIP_DEVICE_CONFIG_TEST_SERIAL_NUMBER, strlen(CHIP_DEVICE_CONFIG_TEST_SERIAL_NUMBER));
     // memcpy(buf + strlen(CHIP_DEVICE_CONFIG_TEST_SERIAL_NUMBER), &temp[12], 4);
-    sprintf(buf, "%s_%02x%02x%02x%02x", CHIP_DEVICE_CONFIG_TEST_SERIAL_NUMBER, temp[4], temp[5], temp[6], temp[7]);
+    int len =
+        snprintf(buf, bufSize, "%s_%02x%02x%02x%02x", CHIP_DEVICE_CONFIG_TEST_SERIAL_NUMBER, temp[4], temp[5], temp[6], temp[7]);
+    VerifyOrReturnError(len >= 0 && static_cast<size_t>(len) < bufSize, CHIP_ERROR_BUFFER_TOO_SMALL);
 
     return CHIP_NO_ERROR;
 }
@@ -511,12 +510,8 @@ CHIP_ERROR FactoryDataProvider<FlashFactoryData>::GetSerialNumber(char * buf, si
 template <class FlashFactoryData>
 CHIP_ERROR FactoryDataProvider<FlashFactoryData>::GetManufacturingDate(uint16_t & year, uint8_t & month, uint8_t & day)
 {
-    // err("enter %s\r\n", __FUNCTION__);
-    // VerifyOrReturnError(mFactoryData.date_year != 0, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
-    // year  = mFactoryData.date_year;
-    // month = mFactoryData.date_month;
-    // day   = mFactoryData.date_day;
-    return CHIP_NO_ERROR;
+    // ManufacturingDate (BINFO.S.A000b) is not supported.
+    return CHIP_DEVICE_ERROR_CONFIG_NOT_FOUND;
 }
 
 template <class FlashFactoryData>
@@ -538,9 +533,7 @@ CHIP_ERROR FactoryDataProvider<FlashFactoryData>::GetHardwareVersionString(char 
 
     // memcpy(buf, mFactoryData.hw_ver_str.data, mFactoryData.hw_ver_str.len);
     // buf[mFactoryData.hw_ver_str.len] = 0;
-    strcpy(buf, CHIP_DEVICE_CONFIG_DEVICE_HARDWARE_VERSION_STRING);
-
-    return CHIP_NO_ERROR;
+    return CopyStringToBuffer(CHIP_DEVICE_CONFIG_DEVICE_HARDWARE_VERSION_STRING, buf, bufSize);
 }
 
 template <class FlashFactoryData>

@@ -30,6 +30,40 @@ chip::OTAImageProcessorImpl gImageProcessor;
 
 void OTAConfig::Init()
 {
+    CHIP_ERROR err = chip::DeviceLayer::PlatformMgr().AddEventHandler(OnPlatformEvent, 0);
+    if (err != CHIP_NO_ERROR)
+    {
+        ChipLogError(SoftwareUpdate, "Failed to register OTA event handler: %" CHIP_ERROR_FORMAT, err.Format());
+    }
+}
+
+void OTAConfig::OnPlatformEvent(const chip::DeviceLayer::ChipDeviceEvent * event, intptr_t arg)
+{
+    // On OpenThread, kDnssdInitialized is posted once the SRP server has answered, so the
+    // provider address can be resolved by the time the requestor connects to it.
+    if (event->Type != chip::DeviceLayer::DeviceEventType::kDnssdInitialized || chip::GetRequestorInstance() != nullptr)
+    {
+        return;
+    }
+
+    ChipLogProgress(SoftwareUpdate, "DNS-SD initialized, scheduling OTA Requestor initialization");
+    CHIP_ERROR err = chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Seconds32(kInitOTARequestorDelaySec),
+                                                                 InitOTARequestorHandler, nullptr);
+    if (err != CHIP_NO_ERROR)
+    {
+        ChipLogError(SoftwareUpdate, "Failed to schedule OTA Requestor initialization: %" CHIP_ERROR_FORMAT, err.Format());
+    }
+}
+
+void OTAConfig::InitOTARequestorHandler(chip::System::Layer * systemLayer, void * appState)
+{
+    InitOTARequestor();
+}
+
+void OTAConfig::InitOTARequestor()
+{
+    VerifyOrReturn(chip::GetRequestorInstance() == nullptr);
+
     // Initialize and interconnect the Requestor and Image Processor objects -- START
     SetRequestorInstance(&gRequestorCore);
 

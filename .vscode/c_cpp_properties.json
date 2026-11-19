@@ -3,6 +3,7 @@
         {
             "name": "RT584HA4 lighting-app (GN)",
             "compileCommands": "${workspaceFolder}/out/lighting-app/RT584HA4/compile_commands.json",
+            "includePath": [],
             "compilerPath": "${workspaceFolder}/.environment/cipd/packages/arm/bin/arm-none-eabi-gcc",
             "intelliSenseMode": "gcc-arm",
             "cStandard": "gnu11",

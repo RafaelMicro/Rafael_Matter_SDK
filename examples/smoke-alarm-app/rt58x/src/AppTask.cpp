@@ -35,7 +35,6 @@
 #include <app/TestEventTriggerDelegate.h>
 #include <app/clusters/identify-server/identify-server.h>
 #include <app/clusters/smoke-co-alarm-server/SmokeCOTestEventTriggerHandler.h>
-#include <app/clusters/smoke-co-alarm-server/smoke-co-alarm-server.h>
 #include <app/server/Dnssd.h>
 #include <app/server/Server.h>
 #include <app/util/attribute-storage.h>
@@ -263,7 +262,6 @@ CHIP_ERROR AppTask::Init()
     RafaelCommissioningTiming::MarkBootStart();
     MatterFotaInit();
     CHIP_ERROR err;
-    ChipLogProgress(NotSpecified, "Current Software Version: %s", CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION_STRING);
     MatterNetworkInit();
 
     err = ThreadStackMgr().InitThreadStack();
@@ -459,69 +457,15 @@ void AppTask::FunctionHandler(AppEvent * aEvent)
         }
         break;
 
-    case (AppEvent::AppActionTypes::kActionTypes_Switch_1):
-        if (aEvent->ButtonEvent.Action == true)
-        {
-            if (!sAppTask.mFunctionSwitchActive && sAppTask.mFunction == kFunction_NoneSelected)
-            {
-                sAppTask.mFunction             = kFunction_Switch_1;
-                sAppTask.mFunctionSwitchActive = true;
-            }
-        }
-        else
-        {
-            if (sAppTask.mFunctionSwitchActive && sAppTask.mFunction == kFunction_Switch_1)
-            {
-                chip::DeviceLayer::PlatformMgr().LockChipStack();
-                bool success = Clusters::SmokeCoAlarmServer::Instance().RequestSelfTest(1);
-                chip::DeviceLayer::PlatformMgr().UnlockChipStack();
-                if (!success)
-                {
-                    ChipLogProgress(Zcl, "Manual self-test failed");
-                }
-
-                sAppTask.mFunction             = kFunction_NoneSelected;
-                sAppTask.mFunctionSwitchActive = false;
-            }
-        }
+    // Smoke and CO buttons simulate a sensor: the alarm is raised while the button is held
+    // and cleared on release. They are independent, so both alarms can be active at once.
+    case (AppEvent::AppActionTypes::kActionTypes_Smoke):
+        SmokeMgr().ToggleSmokeState(aEvent->ButtonEvent.Action ? Clusters::SmokeCoAlarm::AlarmStateEnum::kWarning
+                                                               : Clusters::SmokeCoAlarm::AlarmStateEnum::kNormal);
         break;
-    case (AppEvent::AppActionTypes::kActionTypes_Switch_2):
-        if (aEvent->ButtonEvent.Action == true)
-        {
-            if (!sAppTask.mFunctionSwitchActive && sAppTask.mFunction == kFunction_NoneSelected)
-            {
-                sAppTask.mFunction             = kFunction_Switch_2;
-                sAppTask.mFunctionSwitchActive = true;
-            }
-        }
-        else
-        {
-            if (sAppTask.mFunctionSwitchActive && sAppTask.mFunction == kFunction_Switch_2)
-            {
-                SmokeMgr().ToggleSmokeState(chip::app::Clusters::SmokeCoAlarm::AlarmStateEnum::kWarning);
-                sAppTask.mFunction             = kFunction_NoneSelected;
-                sAppTask.mFunctionSwitchActive = false;
-            }
-        }
-        break;
-    case (AppEvent::AppActionTypes::kActionTypes_Switch_3):
-        if (aEvent->ButtonEvent.Action == true)
-        {
-            if (!sAppTask.mFunctionSwitchActive && sAppTask.mFunction == kFunction_NoneSelected)
-            {
-                sAppTask.mFunction             = kFunction_Switch_3;
-                sAppTask.mFunctionSwitchActive = true;
-            }
-        }
-        else
-        {
-            if (sAppTask.mFunctionSwitchActive && sAppTask.mFunction == kFunction_Switch_3)
-            {
-                SmokeMgr().ToggleSmokeState(chip::app::Clusters::SmokeCoAlarm::AlarmStateEnum::kNormal);
-                sAppTask.mFunction             = kFunction_NoneSelected;
-                sAppTask.mFunctionSwitchActive = false;
-            }
-        }
+    case (AppEvent::AppActionTypes::kActionTypes_CO):
+        SmokeMgr().ToggleCOState(aEvent->ButtonEvent.Action ? Clusters::SmokeCoAlarm::AlarmStateEnum::kWarning
+                                                            : Clusters::SmokeCoAlarm::AlarmStateEnum::kNormal);
         break;
     default:
         break;
@@ -548,7 +492,7 @@ void AppTask::ButtonEventHandler(uint32_t pin, void * isr_param)
     case (1): {
         AppEvent button_event              = {};
         button_event.Type                  = AppEvent::kEventType_Button;
-        button_event.ButtonEvent.ButtonIdx = AppEvent::AppActionTypes::kActionTypes_Switch_1;
+        button_event.ButtonEvent.ButtonIdx = AppEvent::AppActionTypes::kActionTypes_Smoke;
         button_event.ButtonEvent.Action    = (pin_status) ? 0 : 1;
         button_event.Handler               = FunctionHandler;
         xQueueSendFromISR(sAppEventQueue, &button_event, NULL);
@@ -557,16 +501,7 @@ void AppTask::ButtonEventHandler(uint32_t pin, void * isr_param)
     case (2): {
         AppEvent button_event              = {};
         button_event.Type                  = AppEvent::kEventType_Button;
-        button_event.ButtonEvent.ButtonIdx = AppEvent::AppActionTypes::kActionTypes_Switch_2;
-        button_event.ButtonEvent.Action    = (pin_status) ? 0 : 1;
-        button_event.Handler               = FunctionHandler;
-        xQueueSendFromISR(sAppEventQueue, &button_event, NULL);
-    }
-    break;
-    case (3): {
-        AppEvent button_event              = {};
-        button_event.Type                  = AppEvent::kEventType_Button;
-        button_event.ButtonEvent.ButtonIdx = AppEvent::AppActionTypes::kActionTypes_Switch_3;
+        button_event.ButtonEvent.ButtonIdx = AppEvent::AppActionTypes::kActionTypes_CO;
         button_event.ButtonEvent.Action    = (pin_status) ? 0 : 1;
         button_event.Handler               = FunctionHandler;
         xQueueSendFromISR(sAppEventQueue, &button_event, NULL);

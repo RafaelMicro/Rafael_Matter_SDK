@@ -43,15 +43,10 @@ optimize_debug_level = "s"
 
 chip_build_tests = false
 
-# Matter 1.6 gates clusters with external dependencies behind
-# chip_enable_all_clusters (default true via matter_enable_recommended).
-# push-av-stream-transport needs third_party/uriparser, which this fork does
-# not ship and an RT58x device has no use for. config/ameba/args.gni disables
-# it the same way.
 chip_enable_push_av_stream_transport = false
 
 chip_enable_thread = true
-openthread_root = "${chip_root}/third_party/openthread/openthread-rafael/openthread"
+openthread_root = "${chip_root}/third_party/openthread/components-thread/openthread"
 
 openthread_core_config_platform_check_file = ""
 

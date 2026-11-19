@@ -66,8 +66,6 @@ CHIP_ERROR OccupancyManager::Init()
     return CHIP_NO_ERROR;
 }
 
-void OccupancyManager::AttributeChangeHandler(EndpointId endpointId, AttributeId attributeId, uint8_t * value, uint16_t size) {}
-
 CHIP_ERROR OccupancyManager::SetOccupancy(bool detected)
 {
     auto * cluster = OccupancySensing::FindClusterOnEndpoint(kOccupancyEndpoint);
